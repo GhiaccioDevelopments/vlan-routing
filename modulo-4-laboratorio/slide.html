@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modulo 4 — Laboratorio in Packet Tracer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<script src="../assets/deck.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { Box, Chip, Grid, Card, Table, Code } = UI;
+
+const slides = [
+  { copertina: true, titolo: "Il laboratorio in Packet Tracer", contenuto: () => <span>Dalla topologia vuota al ping tra VLAN: l'ordine dei passi, la configurazione completa, i comandi di controllo e cosa fare quando non funziona.</span>,
+    note: "Rete di riferimento: due switch 2960, un router 2911, VLAN 10, 20 e 99." },
+
+  { sezione: "Metodo", titolo: "L'ordine di lavoro", contenuto: () => (
+    <Grid cols={2}>
+      <ol>
+        <li><strong>Topologia</strong>: dispositivi e cavi giusti.</li>
+        <li><strong>PC</strong>: IP, maschera e gateway.</li>
+        <li><strong>Switch</strong>: creare le VLAN (su ogni switch).</li>
+        <li><strong>Switch</strong>: porte access nelle VLAN.</li>
+        <li><strong>Switch</strong>: porte trunk (verso switch e router).</li>
+        <li><strong>Router</strong>: <code>no shutdown</code> + sotto-interfacce.</li>
+        <li><strong>Controllo</strong>: comandi show e ping.</li>
+        <li><strong>Salvare</strong>: configurazioni e file .pkt.</li>
+      </ol>
+      <div className="stack">
+        <Box type="tip" title="Controlla a ogni passo">Dopo le VLAN: <code>show vlan brief</code>. Dopo il trunk: ping nella stessa VLAN tra i due switch. Solo dopo, il router. Così sai sempre dove sta l'errore.</Box>
+        <Box type="info" title="Prima di scrivere">Fai una tabella su carta: porta, PC, VLAN, IP, gateway. Gli errori più frequenti sono di distrazione.</Box>
+      </div>
+    </Grid>),
+    note: "Lo stesso ordine dei tre video: prima un solo switch, poi il trunk, poi il router." },
+
+  { sezione: "Topologia", titolo: "Dispositivi e cavi", contenuto: () => (
+    <div className="stack">
+      <Table head={["Collegamento", "Cavo in Packet Tracer", "Porte consigliate"]} rows={[
+        ["PC – switch", "Copper Straight-Through (dritto, linea nera continua)", "FastEthernet0 del PC, Fa0/x dello switch"],
+        ["Switch – switch", "Copper Cross-Over (incrociato, linea tratteggiata)", "Gig0/1 – Gig0/1"],
+        ["Switch – router", "Copper Straight-Through (dritto)", "Gig0/2 dello switch, Gig0/0 del router"],
+      ]} />
+      <Grid cols={2}>
+        <Box type="warn" title="Evita il cavo automatico">Il fulmine sceglie le porte al posto tuo: poi non sai più quale porta configurare. Scegli tu cavo e porta.</Box>
+        <Box type="info" title="Pallini sui collegamenti">Verde = collegamento attivo. Arancione = lo switch sta ancora controllando la porta (aspetta circa 30 secondi). Rosso = porta spenta o cavo sbagliato: verso il router è rosso finché non dai <code>no shutdown</code>.</Box>
+      </Grid>
+      <p className="small muted">Etichette delle porte sempre visibili: Options › Preferences › Always Show Port Labels. I nomi delle porte dipendono dal modello: sul 2960 sono Fa0/1–24 e Gig0/1–2.</p>
+    </div>),
+    note: "Tra dispositivi dello stesso tipo (switch–switch, PC–PC, router–router, ma anche PC–router) serve l'incrociato; tra tipi diversi il dritto." },
+
+  { sezione: "Topologia", titolo: "Configurare i PC", contenuto: () => (
+    <Grid cols={2}>
+      <div className="stack">
+        <p>Clic sul PC › scheda <strong>Desktop</strong> › <strong>IP Configuration</strong> › Static.</p>
+        <Table mono head={["Campo", "Esempio per PC10_3"]} rows={[
+          ["IPv4 Address", "192.168.10.3"],
+          ["Subnet Mask", "255.255.255.0"],
+          ["Default Gateway", "192.168.10.254"],
+        ]} />
+      </div>
+      <div className="stack">
+        <Box type="tip" title="Per fare ping">Scheda Desktop › <strong>Command Prompt</strong> › <code>ping 192.168.20.1</code>. Con <code>ipconfig</code> rivedi la configurazione del PC.</Box>
+        <Box type="warn" title="Maschera">Con /24 la maschera è 255.255.255.0. Packet Tracer la propone da solo, ma controlla che sia quella richiesta dalla consegna.</Box>
+      </div>
+    </Grid>),
+    note: "Rinomina i PC (clic sul nome) seguendo lo schema PCvlan_host: aiuta a non confondersi." },
+
+  { sezione: "CLI", titolo: "Le modalità della riga di comando", contenuto: () => (
+    <Table head={["Prompt", "Modalità", "Come si entra", "Cosa si fa"]} rows={[
+      [<code>Switch&gt;</code>, "Utente", "all'avvio", "quasi niente"],
+      [<code>Switch#</code>, "Privilegiata", <code>enable</code>, "comandi show, salvataggio"],
+      [<code>Switch(config)#</code>, "Configurazione globale", <code>configure terminal</code>, "hostname, creare VLAN, entrare nelle interfacce"],
+      [<code>(config-vlan)#</code>, "VLAN", <code>vlan 10</code>, "name"],
+      [<code>(config-if)#</code>, "Interfaccia", <code>interface fa0/1</code>, "switchport, no shutdown, ip address"],
+      [<code>(config-subif)#</code>, "Sotto-interfaccia", <code>interface g0/0.10</code>, "encapsulation dot1Q, ip address"],
+    ]} />),
+    note: "exit torna indietro di un livello; end (o Ctrl+Z) torna direttamente a #. Se un comando dà «Invalid input», quasi sempre sei nella modalità sbagliata: guarda il prompt." },
+
+  { sezione: "CLI", titolo: "Trucchi che fanno risparmiare tempo", contenuto: () => (
+    <Grid cols={2}>
+      <Table head={["Trucco", "A cosa serve"]} rows={[
+        [<code>Tab</code>, "Completa il comando"],
+        [<code>?</code>, "Elenca i comandi possibili in quel punto"],
+        ["Freccia su", "Richiama il comando precedente"],
+        [<code>do show ...</code>, "Usa un comando show senza uscire da config"],
+        [<code>no ...</code>, "Annulla un comando (es. no vlan 30)"],
+        [<code>end</code>, "Torna subito alla modalità #"],
+      ]} />
+      <div className="stack">
+        <Table mono head={["Completo", "Abbreviato"]} rows={[
+          ["configure terminal", "conf t"],
+          ["interface fastEthernet 0/1", "int fa0/1"],
+          ["interface gigabitEthernet 0/0.10", "int g0/0.10"],
+          ["switchport mode access", "sw mo acc"],
+          ["switchport access vlan 10", "sw acc vl 10"],
+          ["switchport mode trunk", "sw mo tr"],
+          ["encapsulation dot1Q 10", "enc dot 10"],
+          ["show vlan brief", "sh vl br"],
+        ]} />
+        <Box type="warn" title="Translating ... domain server">Hai scritto male un comando in modalità # e la CLI si blocca: premi <code>Ctrl+Shift+6</code>. Per evitarlo: <code>no ip domain-lookup</code> in config.</Box>
+      </div>
+    </Grid>),
+    note: "Un'abbreviazione vale se non è ambigua. In verifica, se il prof vuole i comandi scritti per intero, usa Tab." },
+
+  { sezione: "Configurazione completa", titolo: "Switch 1 (primo piano)", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="VLAN" righe={[
+        ["Switch>", "enable"],
+        ["Switch#", "configure terminal"],
+        ["Switch(config)#", "hostname S1", "Dà un nome allo switch: il prompt diventa S1."],
+        ["S1(config)#", "vlan 10"],
+        ["S1(config-vlan)#", "name vendite"],
+        ["S1(config-vlan)#", "vlan 20", "Si può passare a un'altra VLAN senza exit."],
+        ["S1(config-vlan)#", "name amministrazione"],
+        ["S1(config-vlan)#", "vlan 99"],
+        ["S1(config-vlan)#", "name tecnici"],
+        ["S1(config-vlan)#", "exit"],
+      ]} />
+      <Code title="Porte" righe={[
+        ["S1(config)#", "interface fa0/2", "PC10_3."],
+        ["S1(config-if)#", "switchport mode access"],
+        ["S1(config-if)#", "switchport access vlan 10"],
+        ["S1(config-if)#", "interface fa0/3", "PC20_2."],
+        ["S1(config-if)#", "switchport mode access"],
+        ["S1(config-if)#", "switchport access vlan 20"],
+        ["S1(config-if)#", "interface fa0/4", "LPT_99."],
+        ["S1(config-if)#", "switchport mode access"],
+        ["S1(config-if)#", "switchport access vlan 99"],
+        ["S1(config-if)#", "interface range g0/1 - 2", "G0/1 verso lo Switch 2, G0/2 verso il router."],
+        ["S1(config-if-range)#", "switchport mode trunk"],
+        ["S1(config-if-range)#", "end"],
+      ]} />
+    </Grid>),
+    note: "Le porte seguono la rete dei video: Fa0/2 vendite, Fa0/3 amministrazione, Fa0/4 tecnici. Adattale alla consegna." },
+
+  { sezione: "Configurazione completa", titolo: "Switch 2 (piano terra)", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="VLAN" righe={[
+        ["Switch>", "enable"],
+        ["Switch#", "configure terminal"],
+        ["Switch(config)#", "hostname S2"],
+        ["S2(config)#", "vlan 10"],
+        ["S2(config-vlan)#", "name vendite"],
+        ["S2(config-vlan)#", "vlan 20"],
+        ["S2(config-vlan)#", "name amministrazione"],
+        ["S2(config-vlan)#", "vlan 99", "Va creata anche se qui non ha porte: altrimenti lo switch scarta i suoi frame."],
+        ["S2(config-vlan)#", "name tecnici"],
+        ["S2(config-vlan)#", "exit"],
+      ]} />
+      <Code title="Porte" righe={[
+        ["S2(config)#", "interface range fa0/2 - 3", "PC10_1 e PC10_2."],
+        ["S2(config-if-range)#", "switchport mode access"],
+        ["S2(config-if-range)#", "switchport access vlan 10"],
+        ["S2(config-if-range)#", "interface fa0/4", "PC20_1."],
+        ["S2(config-if)#", "switchport mode access"],
+        ["S2(config-if)#", "switchport access vlan 20"],
+        ["S2(config-if)#", "interface g0/1", "Verso lo Switch 1."],
+        ["S2(config-if)#", "switchport mode trunk"],
+        ["S2(config-if)#", "end"],
+      ]} />
+    </Grid>),
+    note: "A questo punto: ping PC10_3 verso PC10_2 deve rispondere, verso PC20_1 no." },
+
+  { sezione: "Configurazione completa", titolo: "Router", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Router 2911" righe={[
+        ["Router>", "enable"],
+        ["Router#", "configure terminal"],
+        ["Router(config)#", "hostname R1"],
+        ["R1(config)#", "interface g0/0"],
+        ["R1(config-if)#", "no shutdown", "Senza questo niente funziona."],
+        ["R1(config-if)#", "interface g0/0.10"],
+        ["R1(config-subif)#", "encapsulation dot1Q 10"],
+        ["R1(config-subif)#", "ip address 192.168.10.254 255.255.255.0"],
+        ["R1(config-subif)#", "interface g0/0.20"],
+        ["R1(config-subif)#", "encapsulation dot1Q 20"],
+        ["R1(config-subif)#", "ip address 192.168.20.254 255.255.255.0"],
+        ["R1(config-subif)#", "interface g0/0.99"],
+        ["R1(config-subif)#", "encapsulation dot1Q 99"],
+        ["R1(config-subif)#", "ip address 192.168.99.254 255.255.255.0"],
+        ["R1(config-subif)#", "end"],
+      ]} />
+      <div className="stack">
+        <Box type="success" title="Prova finale">Da PC10_3: <code>ping 192.168.20.1</code> e <code>ping 192.168.99.1</code>. Il primo pacchetto può andare in timeout (ARP), gli altri devono rispondere.</Box>
+        <Box type="info" title="Prova intermedia">Da ogni PC fai prima ping al <strong>proprio gateway</strong>. Se risponde, PC, VLAN, trunk e sotto-interfaccia di quella VLAN sono a posto.</Box>
+      </div>
+    </Grid>),
+    note: "Alla domanda «Would you like to enter the initial configuration dialog?» all'avvio del router si risponde no." },
+
+  { sezione: "Controllo", titolo: "Salvare il lavoro", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Su ogni switch e sul router" righe={[
+        ["S1#", "copy running-config startup-config", "Copia la configurazione in uso (RAM) in quella di avvio (NVRAM). Premi Invio alla domanda sul nome del file."],
+        "Destination filename [startup-config]?",
+        "Building configuration...",
+        "[OK]",
+      ]} />
+      <div className="stack">
+        <Box type="danger" title="Se non salvi">Spegnendo e riaccendendo il dispositivo (o con il pulsante Power Cycle Devices) la configurazione sparisce.</Box>
+        <Box type="info" title="Due salvataggi diversi"><code>copy run start</code> salva la configurazione <strong>dentro il dispositivo</strong>. File › Save salva il <strong>file .pkt</strong>. Servono tutti e due.</Box>
+      </div>
+    </Grid>),
+    note: "Forma breve: copy run start, oppure il vecchio comando write memory (wr)." },
+
+  { sezione: "Controllo", titolo: "I comandi show", contenuto: () => (
+    <Table head={["Comando", "Dove", "Cosa guardare"]} rows={[
+      [<code>show vlan brief</code>, "switch", "Le VLAN esistono? Ogni porta access è nella VLAN giusta?"],
+      [<code>show interfaces trunk</code>, "switch", "Quali porte sono in trunk e quali VLAN lasciano passare"],
+      [<code>show interfaces fa0/2 switchport</code>, "switch", "Modalità e VLAN di una singola porta"],
+      [<code>show ip interface brief</code>, "router, switch", "Interfacce e sotto-interfacce: IP assegnato e stato up/down"],
+      [<code>show ip route</code>, "router", "Una riga C per ogni rete di VLAN"],
+      [<code>show running-config</code>, "tutti", "Tutta la configurazione attuale"],
+    ]} />),
+    note: "Tutti si danno dalla modalità #. In configurazione vanno preceduti da do. Spazio per scorrere l'output quando compare --More--, q per uscire." },
+
+  { sezione: "Controllo", titolo: "Simulation Mode", contenuto: () => (
+    <Grid cols={2}>
+      <ol>
+        <li>In basso a destra passa da <strong>Realtime</strong> a <strong>Simulation</strong>.</li>
+        <li><strong>Edit Filters</strong>: lascia solo <strong>ICMP</strong> (e ARP se vuoi vederlo).</li>
+        <li>Con la busta (<strong>Add Simple PDU</strong>) clic sul PC sorgente e poi sul destinatario.</li>
+        <li><strong>Capture / Forward</strong>: il pacchetto avanza di un passo.</li>
+        <li>Clic sulla busta: schede <strong>Inbound</strong> e <strong>Outbound PDU Details</strong>.</li>
+      </ol>
+      <div className="stack">
+        <Box type="tip" title="Cosa osservare">Sullo switch: in ingresso frame normale, in uscita sul trunk compare l'intestazione <strong>Dot1Q</strong> con il numero di VLAN. Sul router: entra con un tag ed esce con un altro.</Box>
+        <Box type="info" title="Esito">Nella lista in basso a destra la PDU risulta <strong>Successful</strong> o <strong>Failed</strong>. La busta con la X rossa mostra il punto in cui il pacchetto è stato scartato.</Box>
+      </div>
+    </Grid>),
+    note: "È il modo più rapido per scoprire dove si ferma un ping che non funziona." },
+
+  { sezione: "Se non funziona", titolo: "Diagnosi: il ping non risponde", contenuto: () => (
+    <Table head={["Sintomo", "Causa probabile", "Controllo / rimedio"]} rows={[
+      ["Non pingo un PC della mia stessa VLAN sullo stesso switch", "Porta nella VLAN sbagliata, IP o maschera errati", <span><code>show vlan brief</code>, <code>ipconfig</code></span>],
+      ["Stessa VLAN, ma sull'altro switch non arrivo", "Trunk mancante, VLAN non creata sull'altro switch o esclusa dal trunk", <code>show interfaces trunk</code>],
+      ["Non pingo il mio gateway", "no shutdown mancante, sotto-interfaccia errata, porta dello switch verso il router non in trunk", <code>show ip interface brief</code>],
+      ["Pingo il gateway ma non le altre VLAN", "Gateway mancante sul PC di destinazione, o sotto-interfaccia dell'altra VLAN assente", <code>show ip route</code>],
+      ["Un solo PC non va", "Gateway o IP di quel PC", "IP Configuration del PC"],
+      ["Pallino rosso sul cavo", "Porta spenta o cavo sbagliato", <span><code>no shutdown</code>, tipo di cavo</span>],
+    ]} />),
+    note: "Regola: si parte dal vicino e ci si allontana. Stessa VLAN, poi gateway, poi altra VLAN." },
+
+  { sezione: "Se non funziona", titolo: "Richieste extra che possono capitare", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Gestione dello switch (VLAN 99)" righe={[
+        ["S1(config)#", "interface vlan 99", "Interfaccia virtuale dello switch nella VLAN 99: gli dà un IP per poterlo raggiungere con ping o telnet."],
+        ["S1(config-if)#", "ip address 192.168.99.11 255.255.255.0"],
+        ["S1(config-if)#", "no shutdown"],
+        ["S1(config-if)#", "exit"],
+        ["S1(config)#", "ip default-gateway 192.168.99.254", "Gateway dello switch: serve per raggiungerlo da altre VLAN."],
+      ]} />
+      <Code title="Ordine e pulizia" righe={[
+        ["S1(config)#", "hostname S1", "Nome del dispositivo."],
+        ["S1(config-if)#", "description Trunk verso S2", "Commento su un'interfaccia."],
+        ["S1(config)#", "interface range fa0/5 - 24", "Le porte non usate..."],
+        ["S1(config-if-range)#", "shutdown", "...si spengono per sicurezza."],
+        ["S1(config)#", "no ip domain-lookup", "Evita il blocco quando sbagli un comando."],
+      ]} />
+    </Grid>),
+    note: "Non sono nei video: servono solo se compaiono nella consegna." },
+
+  { sezione: "Allenamento", titolo: "Adesso prova tu", contenuto: () => (
+    <Grid cols={3} stretch>
+      <Card tone="accento" title="Allenatore CLI">
+        <p className="small">Un terminale simulato con quattro missioni: creare le VLAN, assegnare le porte, fare il trunk, configurare il router.</p>
+        <a className="btn primary" href="../laboratorio/allenatore-cli.html">Apri ›</a>
+      </Card>
+      <Card tone="verde" title="Scheda di laboratorio">
+        <p className="small">La consegna completa da rifare in Packet Tracer, con tabella degli indirizzi e lista di controllo. Si può stampare.</p>
+        <a className="btn" href="../laboratorio/scheda.html">Apri ›</a>
+      </Card>
+      <Card tone="azzurro" title="Quiz">
+        <p className="small">Domande per modulo e verifica finale.</p>
+        <a className="btn" href="../quiz/quiz.html">Apri ›</a>
+      </Card>
+    </Grid>),
+    note: "Rifai il laboratorio da zero almeno due volte senza guardare i comandi." },
+];
+Deck.mount(slides, { modulo: 4, nome: "Laboratorio in Packet Tracer" });
+</script>
+</body>
+</html>

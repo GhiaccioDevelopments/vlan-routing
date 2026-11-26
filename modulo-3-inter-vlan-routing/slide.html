@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modulo 3 — Inter-VLAN routing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<script src="../assets/deck.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { Box, Chip, Grid, Card, Table, Code, Rete, Percorso, Quiz } = UI;
+
+/* Scenario del terzo video: ai due switch si aggiunge un router 2911 con un solo cavo. */
+const RETE = {
+  h: 370,
+  nodi: [
+    { id: "r", tipo: "router", label: "Router", sub: "2911", x: 75, y: 95 },
+    { id: "s1", tipo: "switch", label: "Switch 1", x: 300, y: 95 },
+    { id: "s2", tipo: "switch", label: "Switch 2", x: 300, y: 275 },
+    { id: "a", tipo: "pc", label: "PC10_3", sub: "192.168.10.3", colore: "verde", x: 590, y: 50 },
+    { id: "b", tipo: "pc", label: "PC20_2", sub: "192.168.20.2", colore: "arancio", x: 590, y: 102 },
+    { id: "c", tipo: "pc", label: "LPT_99", sub: "192.168.99.1", colore: "azzurro", x: 590, y: 154 },
+    { id: "d", tipo: "pc", label: "PC10_1", sub: "192.168.10.1", colore: "verde", x: 590, y: 232 },
+    { id: "e", tipo: "pc", label: "PC10_2", sub: "192.168.10.2", colore: "verde", x: 590, y: 284 },
+    { id: "f", tipo: "pc", label: "PC20_1", sub: "192.168.20.1", colore: "arancio", x: 590, y: 336 },
+  ],
+  link: [
+    { da: "r", a: "s1", trunk: true, label: "trunk", pa: "G0/0", pb: "G0/2" },
+    { da: "s1", a: "s2", trunk: true, label: "trunk", lx: -32, ly: 12, pa: "G0/1", pb: "G0/1" },
+    { da: "s1", a: "a" }, { da: "s1", a: "b" }, { da: "s1", a: "c" },
+    { da: "s2", a: "d" }, { da: "s2", a: "e" }, { da: "s2", a: "f" },
+  ],
+};
+
+const PASSI = [
+  { at: "a", colore: "verde", titolo: "1 · PC10_3 decide a chi spedire", testo: "Destinazione 192.168.20.1: confrontandola con la propria maschera, il PC capisce che è un'altra rete. Non cerca il destinatario: manda il frame al MAC del suo default gateway, 192.168.10.254." },
+  { at: "s1", colore: "verde", link: [2], titolo: "2 · Allo Switch 1, porta access VLAN 10", testo: "Il frame entra senza tag. Lo switch lo associa alla VLAN 10 perché arriva da una porta di quella VLAN." },
+  { at: "r", tag: "tag 10", colore: "verde", link: [0], titolo: "3 · Sale al router con tag 10", testo: "Sul trunk lo switch aggiunge il tag 10. Il router lo riceve sulla sotto-interfaccia G0/0.10, quella configurata con encapsulation dot1Q 10." },
+  { at: "s1", tag: "tag 20", colore: "arancio", link: [0], on: ["r"], titolo: "4 · Il router instrada: stesso cavo, tag 20", testo: "Nella tabella di routing la rete 192.168.20.0/24 è connessa a G0/0.20. Il pacchetto esce da quella sotto-interfaccia: stesso cavo fisico, ma ora con tag 20." },
+  { at: "s2", tag: "tag 20", colore: "arancio", link: [1], titolo: "5 · Trunk tra gli switch, tag 20", testo: "Il destinatario è al piano terra. Lo Switch 1 inoltra il frame sul trunk verso lo Switch 2, sempre con tag 20." },
+  { at: "f", colore: "arancio", link: [7], titolo: "6 · Consegna a PC20_1", testo: "Lo Switch 2 toglie il tag e consegna sulla porta access della VLAN 20." },
+  { at: "a", colore: "verde", link: [7, 1, 0, 2], titolo: "7 · La risposta fa la strada al contrario", testo: "PC20_1 manda la risposta al suo gateway 192.168.20.254: sale al router con tag 20, riparte con tag 10 e arriva a PC10_3. Ping riuscito." },
+];
+
+const slides = [
+  { copertina: true, titolo: "Inter-VLAN routing", contenuto: () => <span>Far comunicare VLAN diverse con un router collegato da un solo cavo: il router-on-a-stick.</span>,
+    note: "Corrisponde al terzo video della serie." },
+
+  { sezione: "Il problema", titolo: "VLAN diverse non si parlano", contenuto: () => (
+    <Grid cols={2}>
+      <div className="stack">
+        <p className="lead">Ogni VLAN è un <strong>dominio di broadcast</strong> e una <strong>rete IP</strong> a sé.</p>
+        <ul>
+          <li>Lo switch lavora a <strong>livello 2</strong> (MAC) e non inoltra mai un frame da una VLAN a un'altra.</li>
+          <li>Passare da una rete IP a un'altra è compito del <strong>livello 3</strong>: serve un router.</li>
+        </ul>
+      </div>
+      <Box type="tip" title="Inter-VLAN routing">L'instradamento dei pacchetti da una VLAN a un'altra, fatto da un dispositivo di livello 3. Il router ha un indirizzo in ogni VLAN: quell'indirizzo è il <strong>default gateway</strong> degli host.</Box>
+    </Grid>),
+    note: "È la stessa situazione di due LAN fisicamente separate: per collegarle serve un router." },
+
+  { sezione: "Il problema", titolo: "Tre soluzioni", contenuto: () => (
+    <Grid cols={3} stretch>
+      <Card title="1 · Un'interfaccia per VLAN">
+        <p className="small">Il router ha una porta fisica per ogni VLAN, collegata a una porta access dello switch.</p>
+        <ul className="small"><li>3 VLAN = 3 porte router, 3 porte switch, 3 cavi.</li><li>Laborioso, spreca risorse.</li></ul>
+      </Card>
+      <Card tone="accento" title="2 · Router-on-a-stick">
+        <p className="small">Un solo cavo in trunk. Sul router una <strong>sotto-interfaccia</strong> per ogni VLAN.</p>
+        <ul className="small"><li>Una sola porta del router.</li><li>Tutto il traffico tra VLAN passa da quel cavo: collo di bottiglia.</li></ul>
+      </Card>
+      <Card title="3 · Switch layer 3">
+        <p className="small">Uno switch multilayer fa il routing da solo, senza router esterno.</p>
+        <ul className="small"><li>La soluzione più veloce.</li><li>Più costosa.</li></ul>
+      </Card>
+    </Grid>),
+    note: "«Stick» vuol dire bastoncino: è l'unico collegamento su cui passa tutto il routing. In verifica di solito si chiede la soluzione 2." },
+
+  { sezione: "Router-on-a-stick", titolo: "La rete", contenuto: () => (
+    <Grid cols={2}>
+      <Rete {...RETE} alt="Router collegato in trunk allo switch 1, che è in trunk con lo switch 2" />
+      <div className="stack">
+        <Table mono head={["VLAN", "Gateway", "Sotto-interf."]} rows={[
+          [<Chip color="verde">10</Chip>, "192.168.10.254", "G0/0.10"],
+          [<Chip color="arancio">20</Chip>, "192.168.20.254", "G0/0.20"],
+          [<Chip color="azzurro">99</Chip>, "192.168.99.254", "G0/0.99"],
+        ]} />
+        <p className="small">Router e switch si collegano con un <strong>cavo dritto</strong>. Per convenzione il gateway è l'<strong>ultimo indirizzo utilizzabile</strong> della rete: il .254.</p>
+      </div>
+    </Grid>),
+    note: "Se il testo della verifica chiede il primo indirizzo utilizzabile come gateway, sarà .1: leggere bene la consegna." },
+
+  { sezione: "Router-on-a-stick", titolo: "L'idea: le sotto-interfacce", contenuto: () => (
+    <div className="stack-lg">
+      <p className="lead">Il router deve avere tre indirizzi IP, uno per VLAN, ma ha <strong>un solo cavo</strong>.</p>
+      <Grid cols={3} stretch>
+        <Card tone="verde" title="G0/0.10"><span className="mono small">dot1Q 10<br />192.168.10.254</span></Card>
+        <Card tone="arancio" title="G0/0.20"><span className="mono small">dot1Q 20<br />192.168.20.254</span></Card>
+        <Card tone="azzurro" title="G0/0.99"><span className="mono small">dot1Q 99<br />192.168.99.254</span></Card>
+      </Grid>
+      <Box type="tip" title="Sotto-interfaccia">Un'interfaccia <strong>logica</strong> ricavata da quella fisica. Si chiama come l'interfaccia fisica più un punto e un numero. Ognuna ha il proprio IP e gestisce i frame di una VLAN.</Box>
+    </div>),
+    note: "Assegnare più indirizzi a una sola scheda di rete è un'operazione comune: si può fare anche su un PC." },
+
+  { sezione: "Configurazione", titolo: "1 · Accendere l'interfaccia fisica", contenuto: () => (
+    <Grid cols={2}>
+      <Code reveal title="Router" righe={[
+        ["Router>", "enable", "Modalità privilegiata."],
+        ["Router#", "configure terminal", "Configurazione globale."],
+        ["Router(config)#", "interface gigabitEthernet 0/0", "L'interfaccia fisica collegata allo switch."],
+        ["Router(config-if)#", "no shutdown", "Le porte dei router sono spente di default. Accendendo quella fisica si attivano anche le sotto-interfacce."],
+        ["Router(config-if)#", "exit", "Torna in configurazione globale."],
+      ]} />
+      <Box type="danger" title="Niente IP qui">All'interfaccia fisica <strong>non si dà nessun indirizzo IP</strong>. Gli indirizzi vanno solo sulle sotto-interfacce.</Box>
+    </Grid>),
+    note: "Dopo no shutdown compare il messaggio %LINK-5-CHANGED: Interface GigabitEthernet0/0, changed state to up." },
+
+  { sezione: "Configurazione", titolo: "2 · Una sotto-interfaccia per VLAN", contenuto: () => (
+    <Code reveal title="Router" righe={[
+      ["Router(config)#", "interface gigabitEthernet 0/0.10", "Crea la sotto-interfaccia. Il prompt diventa (config-subif). Il numero dopo il punto è libero: si usa 10 per ricordare che serve la VLAN 10."],
+      ["Router(config-subif)#", "encapsulation dot1Q 10", "Usa il trunk 802.1Q e lega questa sotto-interfaccia alla VLAN 10: riceve i frame con tag 10 e mette il tag 10 su quelli che escono. È QUESTO numero a decidere la VLAN."],
+      ["Router(config-subif)#", "ip address 192.168.10.254 255.255.255.0", "L'indirizzo che i PC della VLAN 10 useranno come gateway. Va dato DOPO encapsulation, altrimenti il router lo rifiuta."],
+      ["Router(config-subif)#", "exit", "Torna in configurazione globale."],
+      ["Router(config)#", "interface gigabitEthernet 0/0.20", "Sotto-interfaccia per la VLAN 20."],
+      ["Router(config-subif)#", "encapsulation dot1Q 20", "Tag 20."],
+      ["Router(config-subif)#", "ip address 192.168.20.254 255.255.255.0", "Gateway della VLAN 20."],
+      ["Router(config-subif)#", "exit", "Fine VLAN 20."],
+      ["Router(config)#", "interface gigabitEthernet 0/0.99", "Sotto-interfaccia per la VLAN 99. Nel video non viene fatta: senza, la VLAN 99 resta isolata."],
+      ["Router(config-subif)#", "encapsulation dot1Q 99", "Tag 99."],
+      ["Router(config-subif)#", "ip address 192.168.99.254 255.255.255.0", "Gateway della VLAN 99."],
+      ["Router(config-subif)#", "end", "Torna alla modalità privilegiata."],
+    ]} />),
+    note: "Errore del router se si dà ip address prima di encapsulation: «Configuring IP routing on a LAN subinterface is only allowed if that subinterface is already configured as part of an IEEE 802.10, IEEE 802.1Q, or ISL vLAN»." },
+
+  { sezione: "Configurazione", titolo: "3 · Il trunk va sullo switch", contenuto: () => (
+    <Grid cols={2}>
+      <Code reveal title="Switch 1 · porta verso il router" righe={[
+        ["S1(config)#", "interface gigabitEthernet 0/2", "La porta dello switch collegata al router."],
+        ["S1(config-if)#", "switchport mode trunk", "Su quel cavo devono passare tutte le VLAN: la porta deve essere trunk."],
+      ]} />
+      <div className="stack">
+        <Box type="danger" title="Sullo switch, non sul router">Sul router il comando <code>switchport</code> non esiste. Dal lato router il trunk si ottiene con <code>encapsulation dot1Q</code> sulle sotto-interfacce.</Box>
+        <Box type="warn" title="Se hai limitato le VLAN">Con <code>allowed vlan</code> sul trunk, tutte le VLAN da instradare devono essere ammesse, anche sul trunk tra gli switch.</Box>
+      </div>
+    </Grid>),
+    note: "Nel video la prof se ne accorge dopo: il ping non parte finché la porta dello switch non è in trunk." },
+
+  { sezione: "Configurazione", titolo: "4 · Il gateway sui PC", contenuto: () => (
+    <Grid cols={2}>
+      <Table mono head={["PC", "IP", "Maschera", "Gateway"]} rows={[
+        ["PC10_x", "192.168.10.x", "255.255.255.0", "192.168.10.254"],
+        ["PC20_x", "192.168.20.x", "255.255.255.0", "192.168.20.254"],
+        ["LPT_99", "192.168.99.1", "255.255.255.0", "192.168.99.254"],
+      ]} />
+      <div className="stack">
+        <Box type="info" title="Dove si imposta">In Packet Tracer: clic sul PC, scheda <strong>Desktop</strong>, <strong>IP Configuration</strong>, campo <strong>Default Gateway</strong>.</Box>
+        <Box type="danger" title="Senza gateway niente ping">Un PC senza gateway non sa a chi mandare i pacchetti per le altre reti. È la causa più frequente di un inter-VLAN routing che non funziona.</Box>
+      </div>
+    </Grid>),
+    note: "Il gateway di un PC è sempre l'IP della sotto-interfaccia della SUA VLAN." },
+
+  { sezione: "Funzionamento", titolo: "Il viaggio del pacchetto", contenuto: () => <Percorso rete={RETE} passi={PASSI} />,
+    note: "Nel video il primo ping è da 192.168.10.3 a 192.168.20.2, tutti e due sullo Switch 1: il percorso è PC, switch, router, switch, PC." },
+
+  { sezione: "Verifica", titolo: "show ip route", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Router" righe={[
+        ["Router#", "show ip route", "La tabella di routing: le reti che il router sa raggiungere."],
+        "Gateway of last resort is not set",
+        "",
+        "     192.168.10.0/24 is variably subnetted",
+        "C       192.168.10.0/24 is directly connected, Gig0/0.10",
+        "L       192.168.10.254/32 is directly connected, Gig0/0.10",
+        "     192.168.20.0/24 is variably subnetted",
+        "C       192.168.20.0/24 is directly connected, Gig0/0.20",
+        "L       192.168.20.254/32 is directly connected, Gig0/0.20",
+      ]} />
+      <div className="stack">
+        <Box type="info" title="C = connected">Rete collegata direttamente a quella sotto-interfaccia.</Box>
+        <Box type="info" title="L = local">L'indirizzo del router su quella rete (maschera /32).</Box>
+        <Box type="tip" title="Nessuna rotta da aggiungere">Le reti delle VLAN sono tutte direttamente connesse: non servono rotte statiche né protocolli di routing.</Box>
+      </div>
+    </Grid>),
+    note: "Nel video manca la 192.168.99.0 perché la sotto-interfaccia .99 non è stata configurata. Altro comando utile: show ip interface brief." },
+
+  { sezione: "Approfondimento", titolo: "Le altre due soluzioni, in comandi", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Un'interfaccia per VLAN (legacy)" righe={[
+        ["Router(config)#", "interface g0/0", "Una porta fisica per la VLAN 10."],
+        ["Router(config-if)#", "ip address 192.168.10.254 255.255.255.0", "Qui l'IP va sull'interfaccia fisica."],
+        ["Router(config-if)#", "no shutdown"],
+        ["Router(config)#", "interface g0/1", "Un'altra porta per la VLAN 20."],
+        ["Router(config-if)#", "ip address 192.168.20.254 255.255.255.0"],
+        ["Router(config-if)#", "no shutdown", "Sullo switch le due porte verso il router sono ACCESS, una in VLAN 10 e una in VLAN 20."],
+      ]} />
+      <Code title="Switch layer 3 (es. 3560)" righe={[
+        ["MLS(config)#", "ip routing", "Abilita il routing sullo switch."],
+        ["MLS(config)#", "interface vlan 10", "Interfaccia virtuale (SVI) della VLAN 10."],
+        ["MLS(config-if)#", "ip address 192.168.10.254 255.255.255.0", "È il gateway della VLAN 10."],
+        ["MLS(config-if)#", "no shutdown"],
+        ["MLS(config)#", "interface vlan 20"],
+        ["MLS(config-if)#", "ip address 192.168.20.254 255.255.255.0", "Nessun router esterno: instrada lo switch."],
+      ]} />
+    </Grid>),
+    note: "Non sono nel video, che le cita soltanto. Utili se la verifica chiede un confronto." },
+
+  { sezione: "Riepilogo", titolo: "Mettiti alla prova", contenuto: () => (
+    <Quiz domande={[
+      { q: "Quale comando lega una sotto-interfaccia alla VLAN 20?", o: ["interface g0/0.20", "encapsulation dot1Q 20", "switchport access vlan 20"], a: 1, w: "Il numero dopo il punto è solo una convenzione: conta quello in encapsulation dot1Q." },
+      { q: "Un pacchetto dalla VLAN 10 alla VLAN 20 entra nel router con tag 10. Come esce?", o: ["Da un'altra porta fisica", "Dallo stesso cavo, con tag 20", "Dallo stesso cavo, con tag 10"], a: 1, w: "Entra dalla sotto-interfaccia .10 ed esce dalla .20: stesso cavo, tag diverso." },
+      { q: "Tutto è configurato, ma da un PC della VLAN 20 non si pinga nessun'altra VLAN. Dagli altri PC sì. Cosa controlli per primo?", o: ["Il trunk", "Il default gateway di quel PC", "La tabella di routing"], a: 1, w: "Se il problema è di un solo PC, quasi sempre è il gateway mancante o sbagliato." },
+    ]} />),
+    note: "" },
+
+  { sezione: "Riepilogo", titolo: "Da ricordare", contenuto: () => (
+    <Grid cols={2}>
+      <ul>
+        <li>Tra VLAN diverse serve il <strong>livello 3</strong>.</li>
+        <li>Router-on-a-stick: <strong>un cavo in trunk</strong>, una <strong>sotto-interfaccia per VLAN</strong>.</li>
+        <li>Fisica: solo <code>no shutdown</code>, nessun IP.</li>
+        <li>Sotto-interfaccia: prima <code>encapsulation dot1Q N</code>, poi <code>ip address</code>.</li>
+        <li>Porta dello switch verso il router: <code>switchport mode trunk</code>.</li>
+        <li>PC: gateway = IP della sotto-interfaccia della propria VLAN.</li>
+        <li>Controllo: <code>show ip route</code> e ping tra VLAN.</li>
+      </ul>
+      <div className="stack">
+        <Box type="danger" title="Errori tipici">Manca <code>no shutdown</code> · IP dato prima di encapsulation · numero VLAN sbagliato in dot1Q · porta dello switch rimasta in access · gateway mancante sui PC.</Box>
+        <a className="btn primary" href="../modulo-4-laboratorio/slide.html">Modulo 4: il laboratorio in Packet Tracer ›</a>
+      </div>
+    </Grid>),
+    note: "" },
+];
+Deck.mount(slides, { modulo: 3, nome: "Inter-VLAN routing" });
+</script>
+</body>
+</html>

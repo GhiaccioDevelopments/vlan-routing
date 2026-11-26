@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scheda di laboratorio — VLAN, trunk e router-on-a-stick</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/print.css">
+</head>
+<body>
+<div class="foglio">
+  <p class="meta no-print"><a href="../index.html">‹ Indice</a></p>
+  <div>
+    <p class="meta">SISTEMI E RETI · CISCO PACKET TRACER · SCHEDA DI LABORATORIO</p>
+    <h1>VLAN, trunk e router-on-a-stick</h1>
+  </div>
+  <p>Costruisci in Packet Tracer la rete di un'azienda su due piani con tre VLAN. Alla fine ogni PC deve poter fare ping a tutti gli altri, anche di VLAN diverse. Lavora in tre livelli e controlla il risultato alla fine di ognuno.</p>
+
+  <h2>Materiale</h2>
+  <div class="scrollx"><table>
+    <tr><th>Dispositivo</th><th>Modello</th><th>Nome</th></tr>
+    <tr><td>2 switch</td><td>2960-24TT</td><td>S1 (primo piano), S2 (piano terra)</td></tr>
+    <tr><td>1 router</td><td>2911</td><td>R1</td></tr>
+    <tr><td>5 PC + 1 portatile</td><td>PC-PT, Laptop-PT</td><td>vedi tabella</td></tr>
+  </table></div>
+
+  <h2>Tabella di indirizzamento</h2>
+  <div class="scrollx"><table>
+    <tr><th>Host</th><th>Switch · porta</th><th>VLAN</th><th>IP</th><th>Maschera</th><th>Gateway</th></tr>
+    <tr><td>PC10_3</td><td>S1 · Fa0/2</td><td>10 vendite</td><td class="m">192.168.10.3</td><td class="m">255.255.255.0</td><td class="m">192.168.10.254</td></tr>
+    <tr><td>PC20_2</td><td>S1 · Fa0/3</td><td>20 amministrazione</td><td class="m">192.168.20.2</td><td class="m">255.255.255.0</td><td class="m">192.168.20.254</td></tr>
+    <tr><td>LPT_99</td><td>S1 · Fa0/4</td><td>99 tecnici</td><td class="m">192.168.99.1</td><td class="m">255.255.255.0</td><td class="m">192.168.99.254</td></tr>
+    <tr><td>PC10_1</td><td>S2 · Fa0/2</td><td>10 vendite</td><td class="m">192.168.10.1</td><td class="m">255.255.255.0</td><td class="m">192.168.10.254</td></tr>
+    <tr><td>PC10_2</td><td>S2 · Fa0/3</td><td>10 vendite</td><td class="m">192.168.10.2</td><td class="m">255.255.255.0</td><td class="m">192.168.10.254</td></tr>
+    <tr><td>PC20_1</td><td>S2 · Fa0/4</td><td>20 amministrazione</td><td class="m">192.168.20.1</td><td class="m">255.255.255.0</td><td class="m">192.168.20.254</td></tr>
+  </table></div>
+  <div class="scrollx"><table>
+    <tr><th>Collegamento</th><th>Porte</th><th>Cavo</th><th>Modalità</th></tr>
+    <tr><td>S1 – S2</td><td class="m">Gig0/1 – Gig0/1</td><td>incrociato</td><td>trunk</td></tr>
+    <tr><td>S1 – R1</td><td class="m">Gig0/2 – Gig0/0</td><td>dritto</td><td>trunk (lato switch)</td></tr>
+    <tr><td>PC – switch</td><td class="m">FastEthernet0 – Fa0/x</td><td>dritto</td><td>access</td></tr>
+  </table></div>
+  <div class="scrollx"><table>
+    <tr><th>Sotto-interfaccia di R1</th><th>VLAN</th><th>Indirizzo</th></tr>
+    <tr><td class="m">Gig0/0.10</td><td>10</td><td class="m">192.168.10.254 /24</td></tr>
+    <tr><td class="m">Gig0/0.20</td><td>20</td><td class="m">192.168.20.254 /24</td></tr>
+    <tr><td class="m">Gig0/0.99</td><td>99</td><td class="m">192.168.99.254 /24</td></tr>
+  </table></div>
+
+  <h2>Livello 1 · VLAN su uno switch</h2>
+  <ol>
+    <li>Posiziona i dispositivi, collega i PC agli switch e assegna IP, maschera e gateway.</li>
+    <li>Su S1 e su S2 crea le VLAN 10, 20 e 99 con i nomi della tabella.</li>
+    <li>Metti ogni porta dei PC in access nella VLAN giusta.</li>
+  </ol>
+  <p class="nota"><strong>Controllo.</strong> <code>show vlan brief</code> su entrambi gli switch. Da PC10_1 il ping a PC10_2 risponde; il ping a PC20_1 va in timeout.</p>
+
+  <h2>Livello 2 · Trunk tra gli switch</h2>
+  <ol>
+    <li>Collega S1 e S2 sulle porte Gig0/1 con il cavo incrociato.</li>
+    <li>Metti le due porte in trunk.</li>
+  </ol>
+  <p class="nota"><strong>Controllo.</strong> <code>show interfaces trunk</code>. Da PC10_3 il ping a PC10_2 (altro piano, stessa VLAN) risponde; il ping a PC20_1 va ancora in timeout. In Simulation Mode osserva il tag Dot1Q nella PDU in uscita da S1.</p>
+
+  <h2>Livello 3 · Router-on-a-stick</h2>
+  <ol>
+    <li>Collega R1 Gig0/0 a S1 Gig0/2 con il cavo dritto e metti in trunk la porta dello switch.</li>
+    <li>Sul router accendi Gig0/0 e crea le tre sotto-interfacce.</li>
+    <li>Salva le configurazioni di S1, S2 e R1 e il file .pkt.</li>
+  </ol>
+  <p class="nota"><strong>Controllo.</strong> <code>show ip route</code> mostra tre reti con la lettera C. Ogni PC fa ping al proprio gateway e a un PC di ognuna delle altre VLAN.</p>
+
+  <h2>Lista di controllo finale</h2>
+  <ul class="check">
+    <li>Ogni PC ha IP, maschera e gateway della propria VLAN</li>
+    <li>VLAN 10, 20 e 99 create con il nome su S1 e su S2</li>
+    <li>Ogni porta dei PC è in access nella VLAN giusta</li>
+    <li>Gig0/1 di S1 e di S2 in trunk</li>
+    <li>Gig0/2 di S1 (verso il router) in trunk</li>
+    <li>Gig0/0 del router con <code>no shutdown</code> e senza indirizzo IP</li>
+    <li>Tre sotto-interfacce con <code>encapsulation dot1Q</code> e IP .254</li>
+    <li>Ping tra VLAN diverse riuscito</li>
+    <li><code>copy running-config startup-config</code> su tutti i dispositivi, file .pkt salvato</li>
+  </ul>
+
+  <h2>Soluzione</h2>
+  <p class="no-print">Prova prima da solo. Apri la soluzione solo per confrontarla con quello che hai scritto.</p>
+  <details><summary>S1</summary>
+<pre>enable
+configure terminal
+hostname S1
+vlan 10
+ name vendite
+vlan 20
+ name amministrazione
+vlan 99
+ name tecnici
+interface fastEthernet 0/2
+ switchport mode access
+ switchport access vlan 10
+interface fastEthernet 0/3
+ switchport mode access
+ switchport access vlan 20
+interface fastEthernet 0/4
+ switchport mode access
+ switchport access vlan 99
+interface range gigabitEthernet 0/1 - 2
+ switchport mode trunk
+end
+copy running-config startup-config</pre></details>
+  <details><summary>S2</summary>
+<pre>enable
+configure terminal
+hostname S2
+vlan 10
+ name vendite
+vlan 20
+ name amministrazione
+vlan 99
+ name tecnici
+interface range fastEthernet 0/2 - 3
+ switchport mode access
+ switchport access vlan 10
+interface fastEthernet 0/4
+ switchport mode access
+ switchport access vlan 20
+interface gigabitEthernet 0/1
+ switchport mode trunk
+end
+copy running-config startup-config</pre></details>
+  <details><summary>R1</summary>
+<pre>enable
+configure terminal
+hostname R1
+interface gigabitEthernet 0/0
+ no shutdown
+interface gigabitEthernet 0/0.10
+ encapsulation dot1Q 10
+ ip address 192.168.10.254 255.255.255.0
+interface gigabitEthernet 0/0.20
+ encapsulation dot1Q 20
+ ip address 192.168.20.254 255.255.255.0
+interface gigabitEthernet 0/0.99
+ encapsulation dot1Q 99
+ ip address 192.168.99.254 255.255.255.0
+end
+copy running-config startup-config</pre></details>
+
+  <h2>Varianti per allenarsi</h2>
+  <ul>
+    <li>Cambia i numeri: VLAN 30, 40, 50 con reti 172.16.30.0/24, 172.16.40.0/24, 172.16.50.0/24 e gateway sul <em>primo</em> indirizzo utilizzabile.</li>
+    <li>Sul trunk tra gli switch lascia passare solo le VLAN 10 e 20. Chi smette di comunicare? Perché?</li>
+    <li>Sposta LPT_99 al piano terra senza toccare i cavi tra gli switch.</li>
+    <li>Togli il gateway a un PC e osserva in Simulation Mode dove si ferma il ping.</li>
+  </ul>
+</div>
+</body>
+</html>

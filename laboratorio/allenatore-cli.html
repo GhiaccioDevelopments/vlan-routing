@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Allenatore CLI — VLAN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<script src="../assets/deck.js"></script>
+<style>
+  html, body, #root { height: auto; }
+  .cli { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .cli-log { height: 46vh; min-height: 260px; overflow: auto; padding: 10px 12px; font-family: var(--f-mono); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cli-log .c { color: var(--accent-alt); font-weight: 600; }
+  .cli-log .e { color: var(--danger); }
+  .cli-in { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); padding: 8px 12px; font-family: var(--f-mono); font-size: 14px; }
+  .cli-in label { color: var(--text-muted); white-space: nowrap; }
+  .cli-in input { flex: 1; min-width: 0; border: 0; background: transparent; padding: .4em 0; }
+  .ob { display: flex; gap: .5em; align-items: baseline; }
+  .ob i { font-style: normal; font-family: var(--f-mono); }
+  .ob.ok { color: var(--success); }
+  @media (max-width: 900px) { .cli { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+const { Box, Btn, Card, Pagina } = UI;
+
+/* ---------- motore: un IOS molto ridotto ---------- */
+function nuovoStato(tipo, pre) {
+  const s = { tipo, host: tipo === "switch" ? "Switch" : "Router", modo: "user", ctx: null, vlans: { 1: "default" }, ifs: {}, salvato: false };
+  if (tipo === "switch") {
+    for (let i = 1; i <= 24; i++) s.ifs["Fa0/" + i] = { modo: "access", vlan: 1, allowed: null, shut: false };
+    s.ifs["Gig0/1"] = { modo: "access", vlan: 1, allowed: null, shut: false };
+    s.ifs["Gig0/2"] = { modo: "access", vlan: 1, allowed: null, shut: false };
+  } else {
+    s.ifs["Gig0/0"] = { shut: true, ip: null }; s.ifs["Gig0/1"] = { shut: true, ip: null };
+  }
+  if (pre) pre(s);
+  return s;
+}
+function prompt(s) {
+  const m = { user: ">", priv: "#", config: "(config)#", vlan: "(config-vlan)#", subif: "(config-subif)#" };
+  if (s.modo === "if") return s.host + (s.ctx.length > 1 ? "(config-if-range)#" : "(config-if)#");
+  return s.host + m[s.modo];
+}
+const ipOk = x => /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(x) && x.split(".").every(o => +o <= 255);
+const rete = (ip, mask) => ip.split(".").map((o, i) => (+o) & (+mask.split(".")[i])).join(".");
+const bit = mask => mask.split(".").reduce((n, o) => n + (+o).toString(2).replace(/0/g, "").length, 0);
+function nomeIf(txt, s) {
+  const m = /^(f[a-z]*|g[a-z]*)(\d+\/\d+)(?:\.(\d+))?$/.exec(txt);
+  if (!m) return null;
+  const base = (m[1][0] === "f" ? "Fa" : "Gig") + m[2];
+  if (!s.ifs[base]) return null;
+  return { base, sub: m[3] };
+}
+const pad = (x, n) => (x + " ".repeat(n)).slice(0, n);
+
+function mostra(s, low, out) {
+  const is = (i, w, min) => low[i] !== undefined && low[i].length >= (min || 1) && w.startsWith(low[i]);
+  if (s.tipo === "switch" && is(1, "vlan") && (low.length === 2 || is(2, "brief"))) {
+    out.push("VLAN Name                 Status    Ports", "---- -------------------- --------- -----------------------------");
+    Object.keys(s.vlans).map(Number).sort((a, b) => a - b).forEach(v => {
+      const porte = Object.keys(s.ifs).filter(n => s.ifs[n].modo === "access" && s.ifs[n].vlan === v);
+      const righe = []; for (let i = 0; i < porte.length; i += 4) righe.push(porte.slice(i, i + 4).join(", "));
+      out.push(pad(v, 5) + pad(s.vlans[v], 21) + "active    " + (righe[0] || ""));
+      righe.slice(1).forEach(r => out.push(" ".repeat(36) + r));
+    });
+    out.push("1002 fddi-default         active", "1003 token-ring-default   active", "1004 fddinet-default      active", "1005 trnet-default        active");
+  } else if (s.tipo === "switch" && is(1, "interfaces", 3) && is(2, "trunk")) {
+    const tr = Object.keys(s.ifs).filter(n => s.ifs[n].modo === "trunk");
+    if (!tr.length) return out.push("(nessuna porta in trunk)");
+    out.push("Port      Mode   Encapsulation  Status     Native vlan");
+    tr.forEach(n => out.push(pad(n, 10) + "on     802.1q         trunking   1"));
+    out.push("", "Port      Vlans allowed on trunk");
+    tr.forEach(n => out.push(pad(n, 10) + (s.ifs[n].allowed ? s.ifs[n].allowed.join(",") : "1-1005")));
+  } else if (is(1, "ip") && is(2, "interface", 3) && is(3, "brief")) {
+    out.push("Interface              IP-Address      Status                Protocol");
+    Object.keys(s.ifs).forEach(n => {
+      const f = s.ifs[n], fis = s.ifs[n.split(".")[0]], su = !fis.shut;
+      out.push(pad(n, 23) + pad(f.ip ? f.ip[0] : "unassigned", 16) + pad(su ? "up" : "administratively down", 22) + (su ? "up" : "down"));
+    });
+  } else if (s.tipo === "router" && is(1, "ip") && is(2, "route")) {
+    out.push("Gateway of last resort is not set", "");
+    let n = 0;
+    Object.keys(s.ifs).forEach(k => {
+      const f = s.ifs[k], fis = s.ifs[k.split(".")[0]];
+      if (!f.ip || fis.shut || (k.includes(".") && !f.encap)) return;
+      n++; out.push("C    " + rete(f.ip[0], f.ip[1]) + "/" + bit(f.ip[1]) + " is directly connected, " + k, "L    " + f.ip[0] + "/32 is directly connected, " + k);
+    });
+    if (!n) out.push("(nessuna rete: interfaccia spenta o senza indirizzi)");
+  } else if (is(1, "running-config")) {
+    out.push("hostname " + s.host, "!");
+    if (s.tipo === "switch") Object.keys(s.vlans).filter(v => v !== "1").forEach(v => out.push("vlan " + v, " name " + s.vlans[v], "!"));
+    Object.keys(s.ifs).forEach(n => {
+      const f = s.ifs[n], r = [];
+      if (s.tipo === "switch") {
+        if (f.modo === "trunk") { if (f.allowed) r.push(" switchport trunk allowed vlan " + f.allowed.join(",")); r.push(" switchport mode trunk"); }
+        else if (f.vlan !== 1) r.push(" switchport access vlan " + f.vlan);
+        if (f.ip) r.push(" ip address " + f.ip.join(" "));
+      } else {
+        if (f.encap) r.push(" encapsulation dot1Q " + f.encap);
+        r.push(f.ip ? " ip address " + f.ip.join(" ") : " no ip address");
+        if (f.shut) r.push(" shutdown");
+      }
+      if (r.length && !(s.tipo === "router" && !n.includes(".") && f.shut && !f.ip)) out.push("interface " + n, ...r, "!");
+    });
+    out.push("end");
+  } else out.push("% Comando show non disponibile in questo allenatore.");
+}
+
+function esegui(s0, riga) {
+  const s = JSON.parse(JSON.stringify(s0)), out = [];
+  let t = riga.trim().split(/\s+/).filter(Boolean);
+  if (!t.length) return { s, out };
+  let low = t.map(x => x.toLowerCase());
+  const is = (i, w, min) => low[i] !== undefined && low[i].length >= (min || 1) && w.startsWith(low[i]);
+  const inval = () => out.push("% Invalid input detected at '^' marker.");
+  const conf = s.modo !== "user" && s.modo !== "priv";
+  const R = () => ({ s, out });
+
+  if (low[0] === "?") {
+    const a = { user: ["enable"], priv: ["configure terminal", "show ...", "copy running-config startup-config", "exit"],
+      config: s.tipo === "switch" ? ["hostname NOME", "vlan N", "interface TIPO N/N", "interface range ...", "do show ...", "exit"] : ["hostname NOME", "interface g0/0", "interface g0/0.N", "do show ...", "exit"],
+      vlan: ["name NOME", "exit", "end"], if: s.tipo === "switch" ? ["switchport mode access|trunk", "switchport access vlan N", "switchport trunk allowed vlan LISTA", "shutdown / no shutdown", "exit", "end"] : ["no shutdown", "ip address IP MASCHERA", "exit", "end"],
+      subif: ["encapsulation dot1Q N", "ip address IP MASCHERA", "exit", "end"] };
+    out.push(...a[s.modo].map(x => "  " + x)); return R();
+  }
+  if (conf && is(0, "do", 2)) { low = low.slice(1); if (is(0, "show", 2)) mostra(s, low, out); else inval(); return R(); }
+  if (is(0, "exit", 2)) { s.modo = { user: "user", priv: "user", config: "priv" }[s.modo] || "config"; return R(); }
+  if (conf && is(0, "end", 2)) { s.modo = "priv"; return R(); }
+
+  if (s.modo === "user") { if (is(0, "enable", 2)) s.modo = "priv"; else inval(); return R(); }
+  if (s.modo === "priv") {
+    if (is(0, "configure", 4)) { s.modo = "config"; out.push("Enter configuration commands, one per line.  End with CNTL/Z."); }
+    else if (is(0, "show", 2)) mostra(s, low, out);
+    else if ((is(0, "copy", 2) && is(1, "running-config") && is(2, "startup-config")) || is(0, "write", 2)) { s.salvato = true; out.push("Building configuration...", "[OK]"); }
+    else if (is(0, "disable", 3)) s.modo = "user";
+    else if (is(0, "ping")) out.push("% Qui non ci sono PC: il ping si prova in Packet Tracer.");
+    else inval();
+    return R();
+  }
+
+  /* --- comandi specifici della modalità --- */
+  if (s.modo === "vlan" && is(0, "name", 2) && t[1]) { s.vlans[s.ctx] = t[1]; return R(); }
+  if (s.modo === "if") {
+    const fs = s.ctx.map(n => s.ifs[n]);
+    if (is(0, "no") && is(1, "shutdown", 2)) { fs.forEach(f => f.shut = false); s.ctx.forEach(n => out.push("%LINK-5-CHANGED: Interface " + n + ", changed state to up")); return R(); }
+    if (is(0, "shutdown", 2)) { fs.forEach(f => f.shut = true); return R(); }
+    if (is(0, "description", 3)) return R();
+    if (is(0, "ip") && is(1, "address") && s.tipo === "router" || (is(0, "ip") && is(1, "address") && s.ctx[0].startsWith("Vlan"))) {
+      if (ipOk(t[2] || "") && ipOk(t[3] || "")) fs.forEach(f => f.ip = [t[2], t[3]]); else out.push("% Incomplete command."); return R();
+    }
+    if (s.tipo === "switch" && is(0, "switchport", 2)) {
+      if (is(1, "mode") && is(2, "access")) { fs.forEach(f => f.modo = "access"); return R(); }
+      if (is(1, "mode") && is(2, "trunk")) { fs.forEach(f => f.modo = "trunk"); return R(); }
+      if (is(1, "access") && is(2, "vlan") && /^\d+$/.test(low[3] || "")) {
+        const v = +low[3];
+        if (!s.vlans[v]) { s.vlans[v] = "VLAN" + String(v).padStart(4, "0"); out.push("% Access VLAN does not exist. Creating vlan " + v); }
+        fs.forEach(f => f.vlan = v); return R();
+      }
+      if (is(1, "trunk") && is(2, "allowed") && is(3, "vlan")) {
+        let k = 4, op = "set";
+        if (is(4, "add", 2)) { op = "add"; k = 5; } else if (is(4, "remove", 2)) { op = "rem"; k = 5; } else if (is(4, "all", 2)) op = "all";
+        const lista = low.slice(k).join("").split(",").filter(Boolean).map(Number);
+        if (op !== "all" && (!lista.length || lista.some(isNaN))) { out.push("% Incomplete command."); return R(); }
+        fs.forEach(f => {
+          const cur = f.allowed || [];
+          f.allowed = op === "all" ? null : op === "set" ? lista : op === "add" ? [...new Set(cur.concat(lista))] : cur.filter(v => !lista.includes(v));
+          if (f.allowed) f.allowed.sort((a, b) => a - b);
+        });
+        return R();
+      }
+      if (is(1, "trunk") && is(2, "native")) return R();
+    }
+  }
+  if (s.modo === "subif") {
+    const f = s.ifs[s.ctx];
+    if (is(0, "encapsulation", 3) && is(1, "dot1q", 3) && /^\d+$/.test(low[2] || "")) { f.encap = +low[2]; return R(); }
+    if (is(0, "ip") && is(1, "address")) {
+      if (!f.encap) out.push("% Configuring IP routing on a LAN subinterface is only allowed if that", "subinterface is already configured as part of an IEEE 802.10, IEEE 802.1Q,", "or ISL vLAN.");
+      else if (ipOk(t[2] || "") && ipOk(t[3] || "")) f.ip = [t[2], t[3]]; else out.push("% Incomplete command.");
+      return R();
+    }
+    if (is(0, "no") && is(1, "shutdown", 2)) return R();
+  }
+
+  /* --- comandi globali, validi da ogni modalità di configurazione --- */
+  if (is(0, "hostname", 2) && t[1]) { s.host = t[1]; s.modo = "config"; return R(); }
+  if (is(0, "no") && is(1, "ip") && low[2] && "domain-lookup".startsWith(low[2])) return R();
+  if (s.tipo === "switch" && is(0, "vlan") && /^\d+$/.test(low[1] || "")) {
+    const v = +low[1];
+    if (v < 1 || v > 4094 || (v >= 1002 && v <= 1005)) { out.push("% Numero di VLAN non valido."); return R(); }
+    if (!s.vlans[v]) s.vlans[v] = "VLAN" + String(v).padStart(4, "0");
+    s.modo = "vlan"; s.ctx = v; return R();
+  }
+  if (s.tipo === "switch" && is(0, "no") && is(1, "vlan") && /^\d+$/.test(low[2] || "") && low[2] !== "1") { delete s.vlans[+low[2]]; return R(); }
+  if (is(0, "interface", 3) && low.length > 1) {
+    let resto = low.slice(1).join("");
+    if (s.tipo === "switch" && low[1].length >= 1 && "range".startsWith(low[1]) && low.length > 2) {
+      resto = low.slice(2).join("");
+      const m = /^((?:f|g)[a-z]*)(\d+)\/(\d+)-(?:(?:f|g)[a-z]*\d+\/)?(\d+)$/.exec(resto);
+      const pre = m && (m[1][0] === "f" ? "Fa" : "Gig") + m[2] + "/";
+      const lista = []; if (m) for (let i = +m[3]; i <= +m[4]; i++) lista.push(pre + i);
+      if (!m || !lista.length || lista.some(n => !s.ifs[n])) { inval(); return R(); }
+      s.modo = "if"; s.ctx = lista; return R();
+    }
+    const mv = /^vlan(\d+)$/.exec(resto);
+    if (s.tipo === "switch" && mv) { const n = "Vlan" + mv[1]; if (!s.ifs[n]) s.ifs[n] = { svi: true, ip: null, shut: false }; s.modo = "if"; s.ctx = [n]; return R(); }
+    const f = nomeIf(resto, s);
+    if (!f || (f.sub && s.tipo === "switch")) { inval(); return R(); }
+    if (f.sub) { const n = f.base + "." + f.sub; if (!s.ifs[n]) s.ifs[n] = { encap: null, ip: null }; s.modo = "subif"; s.ctx = n; }
+    else { s.modo = "if"; s.ctx = [f.base]; }
+    return R();
+  }
+  inval(); return R();
+}
+
+/* ---------- missioni ---------- */
+const haNome = (s, v, n) => (s.vlans[v] || "").toLowerCase() === n;
+const acc = (s, p, v) => s.ifs[p].modo === "access" && s.ifs[p].vlan === v;
+const sub = (s, n, v, ip) => { const f = s.ifs["Gig0/0." + n]; return !!f && f.encap === v && !!f.ip && f.ip[0] === ip && f.ip[1] === "255.255.255.0"; };
+const conVlan = s => { s.vlans[10] = "vendite"; s.vlans[20] = "amministrazione"; s.vlans[99] = "tecnici"; };
+const conPorte = s => { conVlan(s); s.ifs["Fa0/2"].vlan = 10; s.ifs["Fa0/3"].vlan = 20; s.ifs["Fa0/4"].vlan = 99; };
+
+const MISSIONI = [
+  { titolo: "1 · Crea le VLAN", tipo: "switch",
+    testo: "Sullo switch crea la VLAN 10 con nome vendite, la VLAN 20 con nome amministrazione e la VLAN 99 con nome tecnici. Alla fine controlla con show vlan brief.",
+    ob: [["VLAN 10 «vendite»", s => haNome(s, 10, "vendite")], ["VLAN 20 «amministrazione»", s => haNome(s, 20, "amministrazione")], ["VLAN 99 «tecnici»", s => haNome(s, 99, "tecnici")]],
+    sol: ["enable", "configure terminal", "vlan 10", "name vendite", "vlan 20", "name amministrazione", "vlan 99", "name tecnici", "end", "show vlan brief"] },
+  { titolo: "2 · Assegna le porte", tipo: "switch", pre: conVlan,
+    testo: "Le VLAN esistono già. Metti in access Fa0/2 nella VLAN 10, Fa0/3 nella VLAN 20 e Fa0/4 nella VLAN 99.",
+    ob: [["Fa0/2 access, VLAN 10", s => acc(s, "Fa0/2", 10)], ["Fa0/3 access, VLAN 20", s => acc(s, "Fa0/3", 20)], ["Fa0/4 access, VLAN 99", s => acc(s, "Fa0/4", 99)]],
+    sol: ["enable", "configure terminal", "interface fa0/2", "switchport mode access", "switchport access vlan 10", "interface fa0/3", "switchport mode access", "switchport access vlan 20", "interface fa0/4", "switchport mode access", "switchport access vlan 99", "end", "show vlan brief"] },
+  { titolo: "3 · Configura i trunk", tipo: "switch", pre: conPorte,
+    testo: "Gig0/1 va verso l'altro switch, Gig0/2 verso il router. Mettile entrambe in trunk. Su Gig0/1 lascia passare solo le VLAN 10 e 20. Controlla con show interfaces trunk.",
+    ob: [["Gig0/1 in trunk", s => s.ifs["Gig0/1"].modo === "trunk"], ["Gig0/2 in trunk", s => s.ifs["Gig0/2"].modo === "trunk"], ["Su Gig0/1 solo VLAN 10 e 20", s => (s.ifs["Gig0/1"].allowed || []).join() === "10,20"]],
+    sol: ["enable", "configure terminal", "interface g0/1", "switchport mode trunk", "switchport trunk allowed vlan 10,20", "interface g0/2", "switchport mode trunk", "end", "show interfaces trunk"] },
+  { titolo: "4 · Router-on-a-stick", tipo: "router",
+    testo: "Sul router accendi Gig0/0 e crea le sotto-interfacce per le VLAN 10, 20 e 99. Il gateway di ogni VLAN è l'ultimo indirizzo utilizzabile della rete 192.168.VLAN.0/24. Controlla con show ip route e salva la configurazione.",
+    ob: [["Gig0/0 accesa", s => !s.ifs["Gig0/0"].shut], ["G0/0.10: dot1Q 10, 192.168.10.254", s => sub(s, 10, 10, "192.168.10.254")], ["G0/0.20: dot1Q 20, 192.168.20.254", s => sub(s, 20, 20, "192.168.20.254")], ["G0/0.99: dot1Q 99, 192.168.99.254", s => sub(s, 99, 99, "192.168.99.254")], ["Configurazione salvata", s => s.salvato]],
+    sol: ["enable", "configure terminal", "interface g0/0", "no shutdown", "interface g0/0.10", "encapsulation dot1Q 10", "ip address 192.168.10.254 255.255.255.0", "interface g0/0.20", "encapsulation dot1Q 20", "ip address 192.168.20.254 255.255.255.0", "interface g0/0.99", "encapsulation dot1Q 99", "ip address 192.168.99.254 255.255.255.0", "end", "show ip route", "copy running-config startup-config"] },
+  { titolo: "Switch libero", tipo: "switch", testo: "Nessun obiettivo: uno switch 2960 vuoto su cui provare i comandi.", ob: [], sol: [] },
+  { titolo: "Router libero", tipo: "router", testo: "Nessun obiettivo: un router vuoto su cui provare i comandi.", ob: [], sol: [] },
+];
+
+function App() {
+  const [mi, setMi] = useState(0);
+  const m = MISSIONI[mi];
+  const [s, setS] = useState(() => nuovoStato(m.tipo, m.pre));
+  const [log, setLog] = useState([]);
+  const [txt, setTxt] = useState("");
+  const [aiuti, setAiuti] = useState(0);
+  const storia = useRef([]), pos = useRef(0), fine = useRef(null), inp = useRef(null);
+  useEffect(() => { if (fine.current) fine.current.scrollTop = fine.current.scrollHeight; }, [log]);
+
+  function scegli(k) { const x = MISSIONI[k]; setMi(k); setS(nuovoStato(x.tipo, x.pre)); setLog([]); setTxt(""); setAiuti(0); storia.current = []; }
+  function invia(e) {
+    e.preventDefault();
+    const r = esegui(s, txt);
+    setLog(log.concat([{ c: prompt(s) + " " + txt }], r.out.map(o => ({ o }))));
+    if (txt.trim()) { storia.current.push(txt); pos.current = storia.current.length; }
+    setS(r.s); setTxt("");
+  }
+  function tasto(e) {
+    const h = storia.current;
+    if (e.key === "ArrowUp" && h.length) { e.preventDefault(); pos.current = Math.max(0, pos.current - 1); setTxt(h[pos.current]); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); pos.current = Math.min(h.length, pos.current + 1); setTxt(h[pos.current] || ""); }
+  }
+  const fatti = m.ob.filter(o => o[1](s)).length, tutto = m.ob.length > 0 && fatti === m.ob.length;
+
+  return (
+    <Pagina titolo="Allenatore CLI" indietro="../index.html">
+      <div className="row">{MISSIONI.map((x, k) => <Btn key={k} small attivo={k === mi} onClick={() => scegli(k)}>{x.titolo}</Btn>)}</div>
+      <Box type="tip" title={m.titolo}>{m.testo}</Box>
+      <div className="cli">
+        <div className="term" onClick={() => inp.current && inp.current.focus()}>
+          <div className="term-title">{m.tipo === "switch" ? "Switch 2960 · CLI simulata" : "Router 2911 · CLI simulata"}</div>
+          <div className="cli-log" ref={fine}>
+            {log.length === 0 && <span className="muted">Scrivi un comando e premi Invio. Valgono le abbreviazioni (conf t, int fa0/2, sw mo acc). Scrivi ? per l'elenco dei comandi.</span>}
+            {log.map((l, k) => <div key={k} className={l.c ? "c" : (l.o[0] === "%" && l.o[1] !== "L" ? "e" : "")}>{l.c || l.o || " "}</div>)}
+          </div>
+          <form className="cli-in" onSubmit={invia}>
+            <label htmlFor="cmd">{prompt(s)}</label>
+            <input id="cmd" ref={inp} className="input" value={txt} onChange={e => setTxt(e.target.value)} onKeyDown={tasto} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label="Comando" />
+            <Btn small variant="primary" onClick={invia}>Invio</Btn>
+          </form>
+        </div>
+        <div className="stack">
+          {m.ob.length > 0 && <Card title={"Obiettivi: " + fatti + " / " + m.ob.length}>
+            {m.ob.map((o, k) => { const ok = o[1](s); return <div key={k} className={"ob" + (ok ? " ok" : "")}><i>{ok ? "[x]" : "[ ]"}</i><span>{o[0]}</span></div>; })}
+          </Card>}
+          {tutto && <Box type="success" title="Missione completata">Tutti gli obiettivi sono raggiunti. Prova a rifarla senza aiuti, poi passa alla successiva.</Box>}
+          {m.sol.length > 0 && <Card title="Aiuto">
+            <p className="small muted">Ogni clic mostra un comando in più della soluzione di riferimento.</p>
+            {m.sol.slice(0, aiuti).map((c, k) => <code key={k} className="cod" style={{ whiteSpace: "normal" }}>{c}</code>)}
+            <div className="row"><Btn small disabled={aiuti >= m.sol.length} onClick={() => setAiuti(aiuti + 1)}>Mostra il prossimo comando</Btn></div>
+          </Card>}
+          <div className="row"><Btn small onClick={() => scegli(mi)}>Ricomincia la missione</Btn></div>
+          <p className="xs muted">È un simulatore ridotto: riconosce i comandi per VLAN, trunk e router-on-a-stick, non tutto IOS. Il ping tra PC si prova in Packet Tracer.</p>
+        </div>
+      </div>
+    </Pagina>
+  );
+}
+UI.render(<App />);
+</script>
+</body>
+</html>

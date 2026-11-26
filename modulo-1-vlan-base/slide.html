@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modulo 1 — VLAN: le basi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<script src="../assets/deck.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+const { Box, Chip, Grid, Card, Btn, Table, Code, Rete, Quiz } = UI;
+
+/* Scenario del primo video: un solo switch, quattro PC, tutti nella rete 192.168.0.0/24. */
+const PC = [
+  { id: "pc10", label: "PC10", sub: "192.168.0.10", x: 110, y: 60, porta: "Fa0/1", vlan: 10 },
+  { id: "pc11", label: "PC11", sub: "192.168.0.11", x: 110, y: 270, porta: "Fa0/4", vlan: 10 },
+  { id: "pc20", label: "PC20", sub: "192.168.0.20", x: 590, y: 60, porta: "Fa0/2", vlan: 20 },
+  { id: "pc30", label: "PC30", sub: "192.168.0.30", x: 590, y: 270, porta: "Fa0/3", vlan: 30 },
+];
+const COL = { 10: "arancio", 20: "verde", 30: "azzurro" };
+
+function SimBroadcast() {
+  const [vlan, setVlan] = useState(false);
+  const [src, setSrc] = useState(null);
+  const s = PC.find(p => p.id === src);
+  const riceve = p => s && p.id !== src && (!vlan || p.vlan === s.vlan);
+  const nodi = [{ id: "sw", tipo: "switch", label: "Switch", x: 350, y: 165 }].concat(PC.map(p => ({
+    ...p, tipo: "pc", colore: vlan ? COL[p.vlan] : null, on: riceve(p), spento: s && !riceve(p) && p.id !== src, onClick: () => setSrc(p.id),
+  })));
+  const link = PC.map(p => ({ da: p.id, a: "sw", pa: p.porta, on: p.id === src || riceve(p), off: s && !riceve(p) && p.id !== src }));
+  const n = PC.filter(riceve).length;
+  return (
+    <Grid cols={2} className="sim-b">
+      <Rete nodi={nodi} link={link} h={330} pacchetto={s ? { at: src, testo: "broadcast", colore: vlan ? COL[s.vlan] : "accent" } : null} alt="Quattro PC collegati a uno switch" />
+      <div className="stack">
+        <div className="row">
+          <Btn small attivo={!vlan} onClick={() => setVlan(false)}>Senza VLAN</Btn>
+          <Btn small attivo={vlan} onClick={() => setVlan(true)}>Con VLAN 10 / 20 / 30</Btn>
+        </div>
+        <Box type={s ? "success" : "tip"} title={s ? s.label + " fa ping 192.168.0.255" : "Tocca un PC"}>
+          {!s && "Il PC invia un ping in broadcast. Guarda chi lo riceve."}
+          {s && !vlan && "Lo switch inoltra il broadcast su tutte le porte tranne quella di arrivo: lo ricevono " + n + " PC. È un unico dominio di broadcast."}
+          {s && vlan && (n > 0 ? "Il broadcast resta dentro la VLAN " + s.vlan + ": lo riceve solo " + n + " PC." : "Nessun altro PC è nella VLAN " + s.vlan + ": il broadcast non arriva a nessuno.")}
+        </Box>
+        <p className="small muted">Gli indirizzi IP non cambiano mai: tutti i PC restano in 192.168.0.0/24. A separarli è solo la VLAN della porta.</p>
+      </div>
+    </Grid>
+  );
+}
+
+const slides = [
+  { copertina: true, titolo: "VLAN: le basi", contenuto: () => <span>Dividere uno switch in più reti logiche. Cosa sono le VLAN, perché servono e come si configurano su uno switch Cisco.</span>,
+    note: "Corrisponde al primo video della serie: un solo switch, quattro PC." },
+
+  { sezione: "Il problema", titolo: "Uno switch = un solo dominio di broadcast", contenuto: () => (
+    <Grid cols={2}>
+      <div className="stack">
+        <p className="lead">Tutti gli host collegati allo stesso switch stanno nello stesso <strong>dominio di broadcast</strong>.</p>
+        <ul>
+          <li>Un frame in broadcast (per esempio una richiesta ARP o un <code>ping 192.168.0.255</code>) viene inoltrato dallo switch su <strong>tutte le porte tranne quella di arrivo</strong>.</li>
+          <li>Più host ci sono, più traffico inutile riceve ognuno.</li>
+          <li>Tutti vedono tutti: nessuna separazione tra uffici o reparti.</li>
+        </ul>
+      </div>
+      <Box type="info" title="Dominio di broadcast">L'insieme dei dispositivi che ricevono un frame inviato in broadcast da uno di loro. Lo switch non lo divide, il router sì.</Box>
+    </Grid>),
+    note: "Da ricordare: lo switch separa i domini di collisione, non quelli di broadcast." },
+
+  { sezione: "Il problema", titolo: "Cos'è una VLAN", contenuto: () => (
+    <div className="stack-lg">
+      <p className="lead">Una <strong>VLAN</strong> (Virtual LAN) è una rete locale <strong>logica</strong>: un gruppo di porte dello switch che si comporta come uno switch separato.</p>
+      <Grid cols={3} stretch>
+        <Card tone="arancio" title="VLAN 10 · Amministrazione">Un dominio di broadcast.</Card>
+        <Card tone="verde" title="VLAN 20 · Vendite">Un altro dominio di broadcast.</Card>
+        <Card tone="azzurro" title="VLAN 30 · Gestione">Un terzo dominio di broadcast.</Card>
+      </Grid>
+      <Box type="tip" title="In una frase">Tre domini di broadcast sulla stessa rete fisica, usando un unico switch. Senza VLAN servirebbe uno switch per ogni gruppo.</Box>
+    </div>),
+    note: "I numeri e i nomi delle VLAN li sceglie l'amministratore. Il numero è quello che conta, il nome serve solo a chi legge." },
+
+  { sezione: "Il problema", titolo: "Perché si usano", contenuto: () => (
+    <Grid cols={2} stretch>
+      <Card tone="accento" title="Chi cambia ufficio">Un impiegato dell'amministrazione scende al piano terra, dove c'è lo switch delle vendite. Senza VLAN bisogna tirare un cavo fino allo switch dell'altro piano. Con le VLAN basta dire via software che la sua porta appartiene alla VLAN amministrazione.</Card>
+      <Card tone="accento" title="Chi cambia gruppo di lavoro">Stesso ufficio, nuovo reparto: si cambia la VLAN della porta, senza toccare i cavi.</Card>
+      <Card title="Meno broadcast">Ogni broadcast resta confinato nella sua VLAN.</Card>
+      <Card title="Più sicurezza e meno costi">I reparti sono isolati tra loro e non serve comprare uno switch per ogni gruppo.</Card>
+    </Grid>),
+    note: "Sono i due scenari che la prof racconta nel video: lo spostamento di piano e il cambio di gruppo." },
+
+  { sezione: "Come funziona", titolo: "Prova: chi riceve il broadcast?", contenuto: () => <SimBroadcast />,
+    note: "Riproduce la prova fatta nel video in Simulation Mode con filtro ICMP." },
+
+  { sezione: "Configurazione", titolo: "Due operazioni, tutte sullo switch", contenuto: () => (
+    <div className="stack-lg">
+      <Grid cols={2} stretch>
+        <Card tone="accento" title="1 · Creare la VLAN">Si indica il <strong>numero</strong> e il <strong>nome</strong>. La VLAN entra nel database dello switch.</Card>
+        <Card tone="accento" title="2 · Associare le porte">Si dice a quale VLAN appartiene ogni <strong>porta</strong> dello switch.</Card>
+      </Grid>
+      <Table head={["Porta", "PC collegato", "VLAN", "Nome"]} rows={[
+        ["Fa0/1", "PC10", <Chip color="arancio">10</Chip>, "amministrazione"],
+        ["Fa0/4", "PC11", <Chip color="arancio">10</Chip>, "amministrazione"],
+        ["Fa0/2", "PC20", <Chip color="verde">20</Chip>, "vendite"],
+        ["Fa0/3", "PC30", <Chip color="azzurro">30</Chip>, "gestione"],
+      ]} />
+      <Box type="warn" title="Attenzione">La VLAN si assegna alla <strong>porta</strong>, non al PC. Sui PC non si configura niente.</Box>
+    </div>),
+    note: "In verifica: prima guardare a quale porta è collegato ogni PC (attivare le etichette delle porte in Packet Tracer: Options, Preferences, Always Show Port Labels)." },
+
+  { sezione: "Configurazione", titolo: "Creare le VLAN", contenuto: () => (
+    <Code reveal title="Switch · CLI" righe={[
+      ["Switch>", "enable", "Passa alla modalità privilegiata (il prompt diventa #)."],
+      ["Switch#", "configure terminal", "Entra in configurazione globale. Si può abbreviare in conf t."],
+      ["Switch(config)#", "vlan 10", "Crea la VLAN numero 10 ed entra nella sua configurazione: il prompt diventa (config-vlan)."],
+      ["Switch(config-vlan)#", "name amministrazione", "Dà un nome alla VLAN. È facoltativo ma di solito in verifica è richiesto."],
+      ["Switch(config-vlan)#", "exit", "Esce dalla VLAN 10: i comandi successivi non riguardano più lei."],
+      ["Switch(config)#", "vlan 20", "Crea la VLAN 20."],
+      ["Switch(config-vlan)#", "name vendite", "Nome della VLAN 20."],
+      ["Switch(config-vlan)#", "exit", "Torna in configurazione globale."],
+      ["Switch(config)#", "vlan 30", "Crea la VLAN 30."],
+      ["Switch(config-vlan)#", "name gestione", "Nome della VLAN 30."],
+      ["Switch(config-vlan)#", "end", "Torna direttamente alla modalità privilegiata."],
+    ]} />),
+    note: "Dall'interfaccia grafica: scheda Config, VLAN Database, numero + nome, Add. Packet Tracer mostra sotto i comandi equivalenti." },
+
+  { sezione: "Configurazione", titolo: "Controllare: show vlan brief", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Dopo aver creato le VLAN" righe={[
+        ["Switch#", "show vlan brief", "Elenca le VLAN e le porte associate. Si dà in modalità privilegiata, non in config."],
+        "",
+        "VLAN Name               Status   Ports",
+        "---- ------------------ -------- ---------------------",
+        "1    default            active   Fa0/1, Fa0/2, Fa0/3,",
+        "                                 Fa0/4 ... Gig0/1, Gig0/2",
+        "10   amministrazione    active",
+        "20   vendite            active",
+        "30   gestione           active",
+        "1002 fddi-default       active",
+        "1003 token-ring-default active",
+        "1004 fddinet-default    active",
+        "1005 trnet-default      active",
+      ]} />
+      <div className="stack">
+        <Box type="info" title="VLAN 1 (default)">Esiste sempre. Tutte le porte ne fanno parte finché non le sposti.</Box>
+        <Box type="info" title="VLAN 1002–1005">Riservate a vecchie reti FDDI e Token Ring. Non si possono cancellare: ignorale.</Box>
+        <Box type="warn" title="Qui manca ancora qualcosa">Le VLAN 10, 20, 30 esistono ma non hanno nessuna porta: nessun PC ne fa parte.</Box>
+      </div>
+    </Grid>),
+    note: "Dentro la configurazione si può usare do show vlan brief." },
+
+  { sezione: "Configurazione", titolo: "Associare le porte alle VLAN", contenuto: () => (
+    <Code reveal title="Switch · CLI" righe={[
+      ["Switch(config)#", "interface fastEthernet 0/1", "Entra nella porta Fa0/1: il prompt diventa (config-if). Abbreviato: int fa0/1."],
+      ["Switch(config-if)#", "switchport mode access", "Porta in modalità access: appartiene a una sola VLAN ed è collegata a un host. È già il comportamento di default, ma scriverlo è buona abitudine."],
+      ["Switch(config-if)#", "switchport access vlan 10", "La porta passa dalla VLAN 1 alla VLAN 10."],
+      ["Switch(config-if)#", "exit", "Esce dalla porta."],
+      ["Switch(config)#", "interface fastEthernet 0/4", "Seconda porta dell'amministrazione."],
+      ["Switch(config-if)#", "switchport access vlan 10", "Anche Fa0/4 nella VLAN 10."],
+      ["Switch(config-if)#", "interface fastEthernet 0/2", "Si può passare a un'altra interfaccia senza exit."],
+      ["Switch(config-if)#", "switchport access vlan 20", "Fa0/2 nella VLAN 20 (vendite)."],
+      ["Switch(config-if)#", "interface fastEthernet 0/3", "Ultima porta."],
+      ["Switch(config-if)#", "switchport access vlan 30", "Fa0/3 nella VLAN 30 (gestione)."],
+      ["Switch(config-if)#", "end", "Torna alla modalità privilegiata."],
+    ]} />),
+    note: "Se la VLAN non esiste ancora, lo switch la crea da solo con il messaggio «Access VLAN does not exist. Creating vlan». Però resta senza nome." },
+
+  { sezione: "Configurazione", titolo: "Più porte in un colpo e correggere gli errori", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Più porte insieme" righe={[
+        ["Switch(config)#", "interface range fa0/5 - 10", "Seleziona le porte da Fa0/5 a Fa0/10: i comandi valgono per tutte."],
+        ["Switch(config-if-range)#", "switchport mode access", "Tutte in access."],
+        ["Switch(config-if-range)#", "switchport access vlan 20", "Tutte nella VLAN 20."],
+      ]} />
+      <Code title="Rimediare a uno sbaglio" righe={[
+        ["Switch(config-if)#", "switchport access vlan 20", "Porta sbagliata? Basta ridare il comando con la VLAN giusta: sovrascrive."],
+        ["Switch(config-if)#", "no switchport access vlan", "Riporta la porta nella VLAN 1."],
+        ["Switch(config)#", "no vlan 30", "Cancella la VLAN 30. Le porte che ne facevano parte restano inattive finché non le riassegni."],
+      ]} />
+    </Grid>),
+    note: "Nel video la prof scambia la porta 2 con la 4 e corregge ridando il comando: succede, basta controllare con show vlan brief." },
+
+  { sezione: "Verifica", titolo: "Il risultato", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Dopo aver assegnato le porte" righe={[
+        ["Switch#", "show vlan brief"],
+        "",
+        "VLAN Name               Status   Ports",
+        "---- ------------------ -------- ---------------",
+        "1    default            active   Fa0/5, Fa0/6 ...",
+        "10   amministrazione    active   Fa0/1, Fa0/4",
+        "20   vendite            active   Fa0/2",
+        "30   gestione           active   Fa0/3",
+      ]} />
+      <Table head={["Ping da PC10", "Esito", "Perché"]} rows={[
+        ["192.168.0.11", <span className="t-success">Reply</span>, "Stessa VLAN 10"],
+        ["192.168.0.30", <span className="t-danger">Request timed out</span>, "VLAN diversa"],
+        ["192.168.0.255", "Arriva solo a PC11", "Il broadcast resta nella VLAN"],
+      ]} />
+    </Grid>),
+    note: "Il ping fallisce anche se PC10 e PC30 hanno lo stesso indirizzo di rete: è la domanda classica." },
+
+  { sezione: "Verifica", titolo: "Una VLAN, una sottorete", contenuto: () => (
+    <div className="stack-lg">
+      <p className="lead">Nel primo esempio tutti i PC sono in 192.168.0.0/24. Funziona, ma la <strong>prassi</strong> è far corrispondere a ogni VLAN una rete IP diversa.</p>
+      <Table mono head={["VLAN", "Nome", "Rete", "Host"]} rows={[
+        [<Chip color="verde">10</Chip>, "Vendite", "192.168.10.0/24", "PC10_1 = 192.168.10.1, PC10_2 = .2 ..."],
+        [<Chip color="arancio">20</Chip>, "Amministrazione", "192.168.20.0/24", "PC20_1 = 192.168.20.1 ..."],
+        [<Chip color="azzurro">99</Chip>, "Tecnici", "192.168.99.0/24", "192.168.99.x"],
+      ]} />
+      <Box type="tip" title="Perché conviene">Il terzo ottetto dell'IP coincide con il numero della VLAN, quindi si capisce subito a quale VLAN appartiene un host. E senza reti IP distinte non si potrebbe fare routing tra le VLAN.</Box>
+    </div>),
+    note: "È lo schema di indirizzi usato nei moduli 2 e 3." },
+
+  { sezione: "Riepilogo", titolo: "Mettiti alla prova", contenuto: () => (
+    <Quiz domande={[
+      { q: "Su quale dispositivo si configurano le VLAN?", o: ["Sui PC", "Sullo switch", "Sul cavo"], a: 1, w: "Si creano le VLAN e si assegnano le porte sullo switch. I PC non sanno di essere in una VLAN." },
+      { q: "PC10 (VLAN 10) e PC30 (VLAN 30) hanno IP nella stessa rete 192.168.0.0/24. Il ping funziona?", o: ["Sì, la rete IP è la stessa", "No, sono in domini di broadcast diversi"], a: 1, w: "Lo switch non fa passare frame da una VLAN all'altra, qualunque sia l'indirizzo IP." },
+      { q: "A quale VLAN appartiene una porta appena tolta dalla scatola?", o: ["Nessuna", "VLAN 1", "VLAN 1002"], a: 1, w: "Tutte le porte partono nella VLAN 1 (default)." },
+    ]} />),
+    note: "Altre domande nel quiz generale." },
+
+  { sezione: "Riepilogo", titolo: "Da ricordare", contenuto: () => (
+    <Grid cols={2}>
+      <ul>
+        <li>VLAN = rete logica = <strong>dominio di broadcast</strong> separato.</li>
+        <li>Si configura <strong>solo sullo switch</strong>: creare la VLAN, poi assegnare le porte.</li>
+        <li><code>vlan 10</code> + <code>name ...</code> per creare.</li>
+        <li><code>switchport mode access</code> + <code>switchport access vlan 10</code> per assegnare.</li>
+        <li><code>show vlan brief</code> per controllare.</li>
+        <li>VLAN diverse non comunicano, nemmeno con la stessa rete IP.</li>
+      </ul>
+      <div className="stack">
+        <Box type="danger" title="Errori tipici">Dimenticare <code>exit</code> e dare il comando nella modalità sbagliata · assegnare la porta sbagliata · dare <code>show</code> dentro config senza <code>do</code>.</Box>
+        <a className="btn primary" href="../modulo-2-trunk/slide.html">Modulo 2: più switch e trunk ›</a>
+      </div>
+    </Grid>),
+    note: "" },
+];
+Deck.mount(slides, { modulo: 1, nome: "VLAN: le basi" });
+</script>
+</body>
+</html>

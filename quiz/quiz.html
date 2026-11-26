@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz — VLAN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<script src="../assets/deck.js"></script>
+<style>html, body, #root { height: auto; }</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+const { Btn, Quiz, Pagina } = UI;
+
+const Q = {
+  "1 · VLAN base": [
+    { q: "Che cos'è una VLAN?", o: ["Un cavo speciale tra due switch", "Una rete locale logica: un dominio di broadcast separato creato sullo switch", "Un indirizzo IP riservato", "Un tipo di router"], a: 1, w: "La VLAN divide lo switch in più reti logiche, ognuna con il suo dominio di broadcast." },
+    { q: "Senza VLAN, cosa fa lo switch con un frame in broadcast?", o: ["Lo scarta", "Lo manda solo al gateway", "Lo inoltra su tutte le porte tranne quella di arrivo", "Lo rimanda al mittente"], a: 2, w: "Uno switch senza VLAN è un unico dominio di broadcast." },
+    { q: "Quali sono le due operazioni per configurare le VLAN su uno switch?", o: ["Dare un IP allo switch e accendere le porte", "Creare la VLAN e associare le porte alla VLAN", "Configurare i PC e il gateway", "Creare il trunk e il tag"], a: 1, w: "Prima vlan N + name, poi switchport access vlan N sulle porte." },
+    { q: "Quale sequenza crea la VLAN 20 chiamata vendite?", o: ["vlan vendite 20", "interface vlan 20 / name vendite", "vlan 20 / name vendite", "switchport vlan 20 vendite"], a: 2, w: "In configurazione globale: vlan 20, poi name vendite." },
+    { q: "Quale comando mette una porta nella VLAN 10?", o: ["vlan 10 access", "switchport access vlan 10", "switchport mode vlan 10", "access vlan 10"], a: 1, w: "Si dà dentro l'interfaccia, in modalità (config-if)." },
+    { q: "Quale comando mostra le VLAN e le porte assegnate?", o: ["show vlan brief", "show ip route", "show interfaces trunk", "show vlans all"], a: 0, w: "Si dà dalla modalità privilegiata (#)." },
+    { q: "A quale VLAN appartengono tutte le porte di uno switch nuovo?", o: ["Nessuna", "VLAN 0", "VLAN 1", "VLAN 1002"], a: 2, w: "La VLAN 1 è quella di default." },
+    { q: "PC A (VLAN 10) e PC B (VLAN 30) sono sullo stesso switch con IP nella stessa rete. Il ping:", o: ["Funziona, la rete IP è la stessa", "Non funziona: sono domini di broadcast diversi", "Funziona solo in broadcast", "Funziona solo dopo un minuto"], a: 1, w: "Lo switch non inoltra frame tra VLAN diverse, qualunque sia l'IP." },
+  ],
+  "2 · Trunk": [
+    { q: "A cosa serve una porta trunk?", o: ["A collegare un PC", "A trasportare più VLAN su un solo collegamento", "A spegnere una VLAN", "A dare un IP allo switch"], a: 1, w: "Sul trunk passano i frame di tutte le VLAN ammesse." },
+    { q: "Quale standard definisce il tag delle VLAN?", o: ["IEEE 802.11", "IEEE 802.3", "IEEE 802.1Q", "IEEE 802.1X"], a: 2, w: "802.1Q, detto anche dot1Q." },
+    { q: "Quanto è lungo il tag 802.1Q e quanti bit ha il VLAN ID?", o: ["2 byte, 8 bit", "4 byte, 12 bit", "4 byte, 16 bit", "8 byte, 12 bit"], a: 1, w: "4 byte in tutto: TPID 0x8100 (16 bit) più priorità e VLAN ID (12 bit, VLAN 1–4094)." },
+    { q: "Quale comando mette una porta in trunk?", o: ["switchport trunk on", "trunk enable", "switchport mode trunk", "encapsulation trunk"], a: 2, w: "Va dato su entrambe le estremità del collegamento." },
+    { q: "Chi toglie il tag prima che il frame arrivi al PC di destinazione?", o: ["Il PC stesso", "Lo switch a cui è collegato il PC", "Il primo switch", "Nessuno"], a: 1, w: "Sulle porte access i frame escono senza tag." },
+    { q: "La VLAN 20 esiste sullo Switch 1 ma non sullo Switch 2. I frame della VLAN 20 che arrivano allo Switch 2 dal trunk:", o: ["Passano lo stesso", "Vengono scartati", "Finiscono nella VLAN 1", "Tornano indietro"], a: 1, w: "Le VLAN vanno create su ogni switch." },
+    { q: "Dove controlli quali VLAN passano su un trunk?", o: ["show vlan brief", "show interfaces trunk", "show ip route", "show mac address-table"], a: 1, w: "Le porte trunk non compaiono in show vlan brief." },
+    { q: "In Packet Tracer, che cavo si usa tra due switch?", o: ["Dritto", "Incrociato (cross-over)", "Seriale", "Console"], a: 1, w: "Tra dispositivi dello stesso tipo si usa l'incrociato." },
+  ],
+  "3 · Inter-VLAN routing": [
+    { q: "Perché serve un router per far comunicare due VLAN?", o: ["Perché gli switch hanno poche porte", "Perché sono reti IP e domini di broadcast distinti: serve il livello 3", "Perché il trunk è lento", "Perché i PC non hanno il tag"], a: 1, w: "Passare da una rete IP a un'altra è routing." },
+    { q: "Nel router-on-a-stick, quanti cavi collegano router e switch con 3 VLAN?", o: ["3", "2", "1", "6"], a: 2, w: "Un solo cavo, in trunk." },
+    { q: "Che cos'è una sotto-interfaccia?", o: ["Una porta fisica di riserva", "Un'interfaccia logica ricavata da quella fisica, con un proprio IP e una propria VLAN", "Una porta dello switch", "Un cavo virtuale"], a: 1, w: "Esempio: GigabitEthernet0/0.10." },
+    { q: "Quale comando lega la sotto-interfaccia alla VLAN 20?", o: ["switchport access vlan 20", "vlan 20", "encapsulation dot1Q 20", "interface g0/0.20"], a: 2, w: "Il numero dopo il punto è solo una convenzione." },
+    { q: "In che ordine si danno i comandi nella sotto-interfaccia?", o: ["Prima ip address, poi encapsulation", "Prima encapsulation, poi ip address", "È indifferente", "Solo ip address"], a: 1, w: "Senza encapsulation il router rifiuta l'indirizzo IP." },
+    { q: "Dove va il comando no shutdown?", o: ["Sull'interfaccia fisica del router", "Su ogni PC", "Sulla VLAN", "Sul trunk dello switch"], a: 0, w: "Le porte dei router sono spente di default." },
+    { q: "La porta dello switch collegata al router deve essere:", o: ["Access nella VLAN 1", "Trunk", "Spenta", "Access nella VLAN 99"], a: 1, w: "Deve far passare tutte le VLAN da instradare." },
+    { q: "Qual è il default gateway di un PC della VLAN 10 (rete 192.168.10.0/24, gateway sull'ultimo indirizzo utilizzabile)?", o: ["192.168.10.1", "192.168.10.254", "192.168.10.255", "192.168.20.254"], a: 1, w: "Il .255 è il broadcast: l'ultimo utilizzabile è .254, l'IP della sotto-interfaccia .10." },
+    { q: "In show ip route, cosa indica la lettera C?", o: ["Rete configurata a mano", "Rete direttamente connessa", "Rete cancellata", "Rete Cisco"], a: 1, w: "C = connected. L = local, l'indirizzo del router stesso." },
+  ],
+  "4 · Laboratorio": [
+    { q: "Hai scritto vlan 10 ma lo switch risponde «Invalid input». Il prompt è Switch#. Cosa manca?", o: ["enable", "configure terminal", "exit", "no shutdown"], a: 1, w: "vlan 10 si dà in configurazione globale: Switch(config)#." },
+    { q: "Come dai un comando show mentre sei in (config-if)?", o: ["Non si può", "Con do davanti: do show vlan brief", "Con no davanti", "Con ? davanti"], a: 1, w: "Oppure esci con end." },
+    { q: "Quale comando salva la configurazione nel dispositivo?", o: ["save config", "copy running-config startup-config", "write startup", "File › Save"], a: 1, w: "File › Save salva invece il file .pkt: servono entrambi." },
+    { q: "Stessa VLAN, switch diversi: il ping non va. Sullo stesso switch sì. Cosa controlli?", o: ["Il gateway dei PC", "Il trunk tra gli switch e che la VLAN esista su entrambi", "Il router", "L'hostname"], a: 1, w: "show interfaces trunk e show vlan brief su tutti e due." },
+    { q: "Il pallino sul cavo tra switch e router resta rosso. Causa più probabile?", o: ["Manca il gateway sui PC", "L'interfaccia del router è spenta: manca no shutdown", "Manca la VLAN 99", "Il trunk ha troppe VLAN"], a: 1, w: "Le interfacce dei router partono in shutdown." },
+    { q: "Da PC10_3 pinghi il tuo gateway con successo, ma non PC20_1. Il router ha tutte le sotto-interfacce. Cosa controlli?", o: ["Il cavo di PC10_3", "Il default gateway di PC20_1", "L'hostname del router", "La VLAN 1"], a: 1, w: "La richiesta arriva, ma PC20_1 senza gateway non sa come rispondere." },
+    { q: "Cosa mostra la scheda Outbound PDU Details di uno switch per un frame che esce sul trunk?", o: ["Niente di diverso", "Un'intestazione Dot1Q con il numero di VLAN", "L'indirizzo IP dello switch", "Il nome della VLAN"], a: 1, w: "In ingresso il frame è normale, in uscita sul trunk ha il tag." },
+  ],
+};
+Q["Verifica finale"] = [0, 2, 4, 7].map(i => Q["1 · VLAN base"][i]).concat([0, 3, 4, 6].map(i => Q["2 · Trunk"][i]), [0, 3, 4, 5, 6, 7].map(i => Q["3 · Inter-VLAN routing"][i]), [2, 3, 5].map(i => Q["4 · Laboratorio"][i]));
+
+function App() {
+  const nomi = Object.keys(Q);
+  const [k, setK] = useState(nomi[0]);
+  return (
+    <Pagina titolo="Quiz" indietro="../index.html">
+      <div className="row">{nomi.map(n => <Btn key={n} small attivo={n === k} onClick={() => setK(n)}>{n}</Btn>)}</div>
+      <Quiz key={k} domande={Q[k]} />
+    </Pagina>
+  );
+}
+UI.render(<App />);
+</script>
+</body>
+</html>

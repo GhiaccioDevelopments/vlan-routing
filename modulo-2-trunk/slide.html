@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modulo 2 — Più switch: il trunk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<script src="../assets/deck.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { Box, Chip, Grid, Card, Table, Code, Rete, Percorso, Quiz } = UI;
+
+/* Scenario del secondo video: due switch su due piani, tre VLAN, una sottorete per VLAN. */
+const RETE = {
+  h: 370,
+  zone: [{ x: 150, y: 8, w: 540, h: 174, label: "Primo piano" }, { x: 150, y: 190, w: 540, h: 174, label: "Piano terra" }],
+  nodi: [
+    { id: "s1", tipo: "switch", label: "Switch 1", x: 250, y: 95 },
+    { id: "s2", tipo: "switch", label: "Switch 2", x: 250, y: 275 },
+    { id: "a", tipo: "pc", label: "PC10_3", sub: "192.168.10.3", colore: "verde", x: 570, y: 50 },
+    { id: "b", tipo: "pc", label: "PC20_2", sub: "192.168.20.2", colore: "arancio", x: 570, y: 102 },
+    { id: "c", tipo: "pc", label: "LPT_99", sub: "192.168.99.1", colore: "azzurro", x: 570, y: 154 },
+    { id: "d", tipo: "pc", label: "PC10_1", sub: "192.168.10.1", colore: "verde", x: 570, y: 232 },
+    { id: "e", tipo: "pc", label: "PC10_2", sub: "192.168.10.2", colore: "verde", x: 570, y: 284 },
+    { id: "f", tipo: "pc", label: "PC20_1", sub: "192.168.20.1", colore: "arancio", x: 570, y: 336 },
+  ],
+  link: [
+    { da: "s1", a: "s2", trunk: true, label: "trunk", lx: -32, ly: 12, pa: "G0/1", pb: "G0/1" },
+    { da: "s1", a: "a", pa: "Fa0/2" }, { da: "s1", a: "b", pa: "Fa0/3" }, { da: "s1", a: "c", pa: "Fa0/4" },
+    { da: "s2", a: "d", pa: "Fa0/2" }, { da: "s2", a: "e", pa: "Fa0/3" }, { da: "s2", a: "f", pa: "Fa0/4" },
+  ],
+};
+
+const PASSI = [
+  { at: "a", colore: "verde", titolo: "1 · PC10_3 fa ping a 192.168.10.2", testo: "Stessa rete IP e stessa VLAN: il PC spedisce il frame direttamente al MAC di PC10_2. È un normale frame Ethernet." },
+  { at: "s1", colore: "verde", link: [1], titolo: "2 · Arriva allo Switch 1 (inbound: senza tag)", testo: "Il frame entra da Fa0/2, porta access della VLAN 10. Lo switch sa che appartiene alla VLAN 10 perché è arrivato da quella porta." },
+  { at: "s2", tag: "tag 10", colore: "verde", link: [0], titolo: "3 · Sul trunk (outbound: con tag 10)", testo: "Il destinatario è dietro la porta trunk. Prima di spedire, lo Switch 1 inserisce nel frame l'intestazione 802.1Q con il numero di VLAN 10." },
+  { at: "s2", tag: "tag 10", colore: "verde", link: [0], on: ["s2"], titolo: "4 · Lo Switch 2 legge il tag", testo: "Lo Switch 2 riceve un frame 802.1Q, legge VLAN 10 e cerca il MAC di destinazione solo tra le porte della VLAN 10." },
+  { at: "e", colore: "verde", link: [5], titolo: "5 · Consegna a PC10_2 (outbound: senza tag)", testo: "La porta Fa0/3 è access: lo switch toglie il tag e consegna un frame Ethernet normale. Il PC non vede mai il tag." },
+];
+
+const slides = [
+  { copertina: true, titolo: "Più switch: il trunk", contenuto: () => <span>Le stesse VLAN su due switch collegati con un solo cavo. Porte trunk, tag 802.1Q e VLAN ammesse.</span>,
+    note: "Corrisponde al secondo video della serie." },
+
+  { sezione: "Lo scenario", titolo: "Due piani, due switch, tre VLAN", contenuto: () => (
+    <Grid cols={2}>
+      <Rete {...RETE} alt="Due switch collegati in trunk con sei PC in tre VLAN" />
+      <div className="stack">
+        <Table mono head={["VLAN", "Nome", "Rete"]} rows={[
+          [<Chip color="verde">10</Chip>, "Vendite", "192.168.10.0/24"],
+          [<Chip color="arancio">20</Chip>, "Amministrazione", "192.168.20.0/24"],
+          [<Chip color="azzurro">99</Chip>, "Tecnici", "192.168.99.0/24"],
+        ]} />
+        <p className="small">Le VLAN sono <strong>sparse sui due piani</strong>: le vendite hanno un PC al primo piano e due al piano terra. I nomi dei PC seguono la VLAN: <code>PC10_3</code> = VLAN 10, indirizzo .3.</p>
+      </div>
+    </Grid>),
+    note: "Gli switch sono già configurati come nel modulo 1: VLAN create e porte access assegnate su entrambi." },
+
+  { sezione: "Lo scenario", titolo: "Le VLAN vanno create su tutti e due gli switch", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Switch 1 · primo piano" righe={[
+        ["S1#", "show vlan brief"],
+        "VLAN Name             Status  Ports",
+        "10   vendite          active  Fa0/2",
+        "20   amministrazione  active  Fa0/3",
+        "99   tecnici          active  Fa0/4",
+      ]} />
+      <Code title="Switch 2 · piano terra" righe={[
+        ["S2#", "show vlan brief"],
+        "VLAN Name             Status  Ports",
+        "10   vendite          active  Fa0/2, Fa0/3",
+        "20   amministrazione  active  Fa0/4",
+        "99   tecnici          active",
+      ]} />
+      <Box type="warn" title="Il database delle VLAN è locale">Ogni switch conosce solo le VLAN create su di lui. Se la VLAN 10 esiste su uno switch ma non sull'altro, i frame della VLAN 10 che arrivano dal trunk vengono scartati.</Box>
+      <Box type="info" title="Stesso numero, porte diverse">Il numero della VLAN deve coincidere sui due switch. Le porte assegnate invece dipendono da dove sono collegati i PC.</Box>
+    </Grid>),
+    note: "Sullo Switch 2 la VLAN 99 esiste ma non ha porte: non c'è ancora nessun tecnico al piano terra." },
+
+  { sezione: "Il trunk", titolo: "Come collegare i due switch?", contenuto: () => (
+    <Grid cols={2} stretch>
+      <Card title="Un cavo per ogni VLAN">
+        <p>Tre VLAN = tre collegamenti (uplink), ognuno con le due porte in access su una VLAN.</p>
+        <ul><li>Spreca porte e cavi.</li><li>Molto laborioso se le VLAN sono tante.</li></ul>
+      </Card>
+      <Card tone="accento" title="Un solo cavo: il trunk">
+        <p>Un unico collegamento su cui passano i frame di <strong>tutte</strong> le VLAN.</p>
+        <ul><li>È come un'autostrada in cui confluiscono le tre strade.</li><li>Gli switch devono però distinguere a quale VLAN appartiene ogni frame: lo fanno con un'etichetta, il <strong>tag</strong>.</li></ul>
+      </Card>
+    </Grid>),
+    note: "In Packet Tracer tra due switch si usa il cavo incrociato (Copper Cross-Over), sulle porte Gigabit." },
+
+  { sezione: "Il trunk", titolo: "Porta access e porta trunk", contenuto: () => (
+    <Table head={["", "Porta access", "Porta trunk"]} rows={[
+      ["Quante VLAN", "Una sola", "Tutte (o quelle ammesse)"],
+      ["A cosa si collega", "Un host: PC, stampante, server", "Un altro switch o un router"],
+      ["Frame sul cavo", "Senza tag", "Con tag 802.1Q"],
+      ["Comando", <code>switchport mode access</code>, <code>switchport mode trunk</code>],
+      ["In show vlan brief", "Compare sotto la sua VLAN", "Non compare"],
+    ]} />),
+    note: "L'ultima riga è un classico: la porta trunk sparisce da show vlan brief. Si controlla con show interfaces trunk." },
+
+  { sezione: "Il trunk", titolo: "Il tag IEEE 802.1Q", contenuto: () => (
+    <div className="stack-lg">
+      <div>
+        <p className="small muted">Frame Ethernet normale</p>
+        <div className="frame"><div><b>MAC dest.</b><span>6 byte</span></div><div><b>MAC sorg.</b><span>6 byte</span></div><div><b>Type</b><span>2 byte</span></div><div><b>Dati</b><span>46–1500</span></div><div><b>FCS</b><span>4 byte</span></div></div>
+      </div>
+      <div>
+        <p className="small muted">Frame con tag 802.1Q (sul trunk)</p>
+        <div className="frame"><div><b>MAC dest.</b><span>6 byte</span></div><div><b>MAC sorg.</b><span>6 byte</span></div><div className="tag"><b>Tag 802.1Q</b><span>4 byte: TPID 0x8100 + VLAN ID</span></div><div><b>Type</b><span>2 byte</span></div><div><b>Dati</b><span>46–1500</span></div><div><b>FCS</b><span>ricalcolato</span></div></div>
+      </div>
+      <Grid cols={3}>
+        <Box type="tip" title="TPID · 16 bit">Vale sempre <code>0x8100</code>: dice «questo frame ha un tag 802.1Q».</Box>
+        <Box type="tip" title="VLAN ID · 12 bit">Il numero della VLAN. Per la VLAN 10 vale <code>0x00A</code>. Con 12 bit: VLAN da 1 a 4094.</Box>
+        <Box type="info" title="Priorità · 3 + 1 bit">Servono per la qualità del servizio. Per la verifica non contano.</Box>
+      </Grid>
+    </div>),
+    note: "In Packet Tracer, Simulation Mode, clic sulla busta, scheda Outbound PDU Details: si vede l'intestazione Dot1Q con TPID 0x8100 e TCI 0x000a per la VLAN 10." },
+
+  { sezione: "Il trunk", titolo: "Il viaggio del frame", contenuto: () => <Percorso rete={RETE} passi={PASSI} />,
+    note: "Riassunto: il primo switch aggiunge il tag, il secondo lo legge e lo toglie. Il tag vive solo sul trunk." },
+
+  { sezione: "Configurazione", titolo: "Configurare il trunk", contenuto: () => (
+    <Grid cols={2}>
+      <Code reveal title="Switch 1" righe={[
+        ["S1(config)#", "interface gigabitEthernet 0/1", "La porta che va verso l'altro switch."],
+        ["S1(config-if)#", "switchport mode trunk", "La porta smette di essere access: lascia passare tutte le VLAN, ognuna con il suo tag."],
+        ["S1(config-if)#", "exit", "Fine."],
+      ]} />
+      <div className="stack">
+        <Code title="Switch 2: uguale" righe={[
+          ["S2(config)#", "interface gigabitEthernet 0/1"],
+          ["S2(config-if)#", "switchport mode trunk"],
+        ]} />
+        <Box type="warn" title="Su tutte e due le estremità">Il trunk va impostato su entrambi gli switch. In Packet Tracer l'altra porta spesso si adatta da sola, ma in verifica configurale tutte e due.</Box>
+      </div>
+    </Grid>),
+    note: "Dalla grafica: scheda Config, interfaccia GigabitEthernet0/1, menu a tendina da Access a Trunk." },
+
+  { sezione: "Configurazione", titolo: "Scegliere quali VLAN passano", contenuto: () => (
+    <Grid cols={2}>
+      <Code reveal title="VLAN ammesse sul trunk" righe={[
+        ["S1(config-if)#", "switchport trunk allowed vlan 10,20", "Sul trunk passano solo le VLAN 10 e 20. La 99 resta confinata al primo piano."],
+        ["S1(config-if)#", "switchport trunk allowed vlan add 99", "Aggiunge la 99 a quelle già ammesse."],
+        ["S1(config-if)#", "switchport trunk allowed vlan remove 99", "La toglie di nuovo."],
+        ["S1(config-if)#", "switchport trunk allowed vlan all", "Torna al default: tutte le VLAN."],
+      ]} />
+      <div className="stack">
+        <Box type="info" title="Di default passano tutte">Se non scrivi niente, il trunk trasporta le VLAN da 1 a 1005.</Box>
+        <Box type="danger" title="Attenzione ad add">Senza <code>add</code> il comando <strong>sostituisce</strong> la lista: <code>allowed vlan 99</code> lascia passare solo la 99 e taglia fuori 10 e 20.</Box>
+      </div>
+    </Grid>),
+    note: "Nel video la prof toglie la 99 e la VLAN di default dal trunk, lasciando solo 10 e 20, su entrambi gli switch." },
+
+  { sezione: "Configurazione", titolo: "Approfondimento: la VLAN nativa", contenuto: () => (
+    <Grid cols={2}>
+      <div className="stack">
+        <p>Su un trunk 802.1Q una VLAN viaggia <strong>senza tag</strong>: è la <strong>VLAN nativa</strong>, di default la VLAN 1.</p>
+        <ul>
+          <li>Deve essere la stessa sulle due estremità, altrimenti lo switch segnala «Native VLAN mismatch».</li>
+          <li>Per sicurezza si sposta su una VLAN inutilizzata.</li>
+        </ul>
+      </div>
+      <Code title="Cambiare la VLAN nativa" righe={[
+        ["S1(config-if)#", "switchport trunk native vlan 99", "I frame della VLAN 99 passano sul trunk senza tag. Va dato uguale sull'altro switch."],
+      ]} />
+    </Grid>),
+    note: "Non è nel video: serve solo se il prof la chiede esplicitamente." },
+
+  { sezione: "Verifica", titolo: "Controllare il trunk", contenuto: () => (
+    <Grid cols={2}>
+      <Code title="Switch 1" righe={[
+        ["S1#", "show interfaces trunk", "Mostra le porte in trunk, la VLAN nativa e le VLAN ammesse."],
+        "Port    Mode   Encapsulation  Status    Native vlan",
+        "Gig0/1  on     802.1q         trunking  1",
+        "",
+        "Port    Vlans allowed on trunk",
+        "Gig0/1  10,20",
+      ]} />
+      <Table head={["Ping da PC10_3", "Esito", "Perché"]} rows={[
+        ["192.168.10.2", <span className="t-success">Reply</span>, "Stessa VLAN, altro switch: passa dal trunk"],
+        ["192.168.20.1", <span className="t-danger">Timeout</span>, "VLAN e rete diverse: serve un router"],
+        ["192.168.10.255", "PC10_1 e PC10_2", "Il broadcast attraversa il trunk ma resta nella VLAN 10"],
+      ]} />
+    </Grid>),
+    note: "Se il primo ping va in timeout e i successivi rispondono è normale: è il tempo dell'ARP." },
+
+  { sezione: "Riepilogo", titolo: "Mettiti alla prova", contenuto: () => (
+    <Quiz domande={[
+      { q: "PC10_3 e PC10_2 sono su switch diversi. Dove viaggia il frame con il tag 802.1Q?", o: ["Dal PC allo switch", "Solo sul collegamento trunk tra i due switch", "Su tutto il percorso"], a: 1, w: "Il primo switch aggiunge il tag, il secondo lo toglie prima di consegnare sulla porta access." },
+      { q: "Hai messo G0/1 in trunk ma in show vlan brief la porta non c'è più. È un errore?", o: ["Sì, la porta è spenta", "No, le porte trunk non compaiono in show vlan brief"], a: 1, w: "Una porta trunk non appartiene a una sola VLAN. Si controlla con show interfaces trunk." },
+      { q: "Sul trunk hai dato allowed vlan 10,20. Un tecnico (VLAN 99) viene spostato al piano terra. Cosa serve?", o: ["Niente", "switchport trunk allowed vlan add 99 su entrambi gli switch", "switchport trunk allowed vlan 99"], a: 1, w: "Con add la 99 si aggiunge alla lista. Senza add sostituiresti 10 e 20 con la sola 99." },
+    ]} />),
+    note: "" },
+
+  { sezione: "Riepilogo", titolo: "Da ricordare", contenuto: () => (
+    <Grid cols={2}>
+      <ul>
+        <li>Stesse VLAN <strong>create su ogni switch</strong>.</li>
+        <li>Un solo cavo tra gli switch, in <strong>trunk</strong> su entrambe le porte.</li>
+        <li>Sul trunk i frame portano il <strong>tag 802.1Q</strong> (4 byte, TPID 0x8100, VLAN ID a 12 bit).</li>
+        <li><code>switchport mode trunk</code>, poi eventualmente <code>switchport trunk allowed vlan ...</code>.</li>
+        <li><code>show interfaces trunk</code> per controllare.</li>
+        <li>VLAN diverse ancora non comunicano: serve il livello 3.</li>
+      </ul>
+      <div className="stack">
+        <Box type="danger" title="Errori tipici">Trunk solo da un lato · VLAN non creata sul secondo switch · VLAN esclusa da <code>allowed vlan</code> · cavo dritto tra due switch in Packet Tracer.</Box>
+        <a className="btn primary" href="../modulo-3-inter-vlan-routing/slide.html">Modulo 3: routing tra VLAN ›</a>
+      </div>
+    </Grid>),
+    note: "" },
+];
+Deck.mount(slides, { modulo: 2, nome: "Più switch: il trunk" });
+</script>
+</body>
+</html>
