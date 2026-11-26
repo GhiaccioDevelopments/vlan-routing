@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Inter-VLAN Routing</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: una colonna di lettura (max 860px) con indice a pillole in alto;
+   terminali scuri e i tre colori VLAN del video come unico codice cromatico. */
+:root{
+  --bg:#f2f5f8; --surface:#ffffff; --fg:#14202e; --muted:#566575; --line:#d4dce5;
+  --accent:#0a6a94; --accent-soft:#e1f0f7;
+  --term-bg:#0f1b28; --term-fg:#d9e5ef; --term-dim:#8ea3b6; --term-hl:#7fd9ff;
+  --v10:#dcf3c8; --v10s:#4c951d; --v20:#ffe3b8; --v20s:#c27600; --v99:#cdeff8; --v99s:#128aa8;
+  --ok:#1b7f45; --ok-bg:#dff3e6; --bad:#b93426; --bad-bg:#fbe3df;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,"Courier New",monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0d151e; --surface:#15212e; --fg:#e4ecf3; --muted:#9babbb; --line:#2a3a4b;
+  --accent:#62c4ea; --accent-soft:#17303f;
+  --term-bg:#070f17; --term-fg:#d9e5ef; --term-dim:#8ea3b6; --term-hl:#7fd9ff;
+  --v10:#22401a; --v10s:#86d853; --v20:#49340f; --v20s:#f2aa3f; --v99:#113a45; --v99s:#52cbe8;
+  --ok:#6fd598; --ok-bg:#143524; --bad:#ff9486; --bad-bg:#43201c;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0d151e; --surface:#15212e; --fg:#e4ecf3; --muted:#9babbb; --line:#2a3a4b;
+  --accent:#62c4ea; --accent-soft:#17303f;
+  --term-bg:#070f17; --term-fg:#d9e5ef; --term-dim:#8ea3b6; --term-hl:#7fd9ff;
+  --v10:#22401a; --v10s:#86d853; --v20:#49340f; --v20s:#f2aa3f; --v99:#113a45; --v99s:#52cbe8;
+  --ok:#6fd598; --ok-bg:#143524; --bad:#ff9486; --bad-bg:#43201c;
+  color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:17px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 4rem}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:3.25rem}
+header.top{padding-top:2.5rem;display:flex;flex-direction:column;gap:.9rem}
+.eyebrow{font-family:var(--mono);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-size:clamp(2rem,6vw,3rem);line-height:1.08;margin:0;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+h1 span{color:var(--accent)}
+.lead{font-size:1.12rem;max-width:62ch;margin:0;color:var(--fg)}
+nav.toc{display:flex;flex-wrap:wrap;gap:.45rem}
+nav.toc a{font-size:.88rem;text-decoration:none;color:var(--fg);border:1px solid var(--line);background:var(--surface);padding:.3rem .7rem;border-radius:999px}
+nav.toc a:hover{border-color:var(--accent);color:var(--accent)}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section{display:flex;flex-direction:column;gap:1rem;scroll-margin-top:1rem}
+h2{font-size:1.55rem;line-height:1.2;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h3{font-size:1.08rem;margin:.4rem 0 0}
+p{margin:0;max-width:68ch}
+ul,ol{margin:0;padding-left:1.25rem;max-width:68ch;display:flex;flex-direction:column;gap:.4rem}
+code,.mono{font-family:var(--mono);font-size:.9em}
+p code,li code,td code{background:var(--accent-soft);padding:.08em .35em;border-radius:4px;white-space:nowrap}
+.key{border-left:4px solid var(--accent);background:var(--accent-soft);padding:.85rem 1rem;border-radius:0 8px 8px 0}
+.key strong{color:var(--accent)}
+.src{font-size:.82rem;color:var(--muted)}
+.tag{display:inline-block;font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;padding:.1rem .45rem;border-radius:4px;border:1px solid var(--line);color:var(--muted);vertical-align:middle}
+.tag.video{border-color:var(--accent);color:var(--accent)}
+
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.93rem;min-width:600px}
+th,td{text-align:left;vertical-align:top;padding:.6rem .8rem;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-size:.76rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.num{font-variant-numeric:tabular-nums;font-family:var(--mono);white-space:nowrap}
+.chip{display:inline-block;padding:.05rem .5rem;border-radius:5px;font-weight:600;font-size:.86rem;border:1.5px solid}
+.c10{background:var(--v10);border-color:var(--v10s)} .c20{background:var(--v20);border-color:var(--v20s)} .c99{background:var(--v99);border-color:var(--v99s)}
+
+.term{background:var(--term-bg);color:var(--term-fg);border-radius:10px;padding:1rem 1.1rem;overflow-x:auto;font-family:var(--mono);font-size:.86rem;line-height:1.65;margin:0;white-space:pre}
+.term .p{color:var(--term-dim)} .term .h{color:var(--term-hl);font-weight:600} .term .c{color:var(--term-dim);font-style:italic}
+
+.diagram{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.diagram svg{display:block;min-width:660px;width:100%;height:auto}
+svg text{font-family:var(--sans);fill:var(--fg)}
+svg .small{font-size:11px;fill:var(--muted)} svg .lbl{font-size:13px;font-weight:600} svg .m{font-family:var(--mono);font-size:11px}
+svg .node{fill:var(--surface);stroke:var(--fg);stroke-width:1.6}
+svg .link{stroke:var(--muted);stroke-width:2;fill:none}
+svg .trunk{stroke:var(--fg);stroke-width:5}
+svg .link.on{stroke:var(--accent);stroke-width:6}
+svg .z10{fill:var(--v10);stroke:var(--v10s)} svg .z20{fill:var(--v20);stroke:var(--v20s)} svg .z99{fill:var(--v99);stroke:var(--v99s)}
+#pkt{transition:transform .6s ease}
+@media (prefers-reduced-motion: reduce){#pkt{transition:none}}
+#pkt rect{stroke:var(--fg);stroke-width:1.5}
+#pkt text{font-family:var(--mono);font-size:10px;font-weight:600}
+
+.stepper{display:flex;flex-direction:column;gap:.8rem}
+.stepbar{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:.45rem .9rem}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.count{font-family:var(--mono);font-size:.85rem;color:var(--muted)}
+.stepbox{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:1rem 1.1rem;min-height:7.5rem;display:flex;flex-direction:column;gap:.35rem}
+.stepbox h3{margin:0}
+
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+.cols>div{min-width:0;border-top:3px solid var(--line);padding-top:.7rem;display:flex;flex-direction:column;gap:.4rem}
+.cols>div.pick{border-top-color:var(--accent)}
+.cols h3{margin:0}
+.cols p,.cols li{font-size:.95rem}
+
+details{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:.65rem .9rem}
+details+details{margin-top:-.4rem}
+summary{cursor:pointer;font-weight:600}
+details p{margin-top:.5rem}
+
+.q{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.6rem}
+.q p.qt{font-weight:600}
+.opts{display:flex;flex-direction:column;gap:.4rem}
+.opts button{text-align:left}
+.opts button.right{background:var(--ok-bg);border-color:var(--ok);color:var(--fg)}
+.opts button.wrong{background:var(--bad-bg);border-color:var(--bad);color:var(--fg)}
+.why{font-size:.93rem;color:var(--muted)}
+.score{font-family:var(--mono);font-weight:600}
+footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padding-top:1rem}
+footer a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">Sistemi e reti · Cisco Packet Tracer · scheda di studio</div>
+  <h1>Inter-VLAN routing con <span>router-on-a-stick</span></h1>
+  <p class="lead">Due PC in VLAN diverse non si parlano, nemmeno se sono attaccati allo stesso switch. Qui trovi perché succede, le tre soluzioni possibili e la configurazione completa di quella spiegata nel video, comando per comando.</p>
+  <nav class="toc" aria-label="Indice">
+    <a href="#problema">Il problema</a>
+    <a href="#soluzioni">Le 3 soluzioni</a>
+    <a href="#rete">La rete del video</a>
+    <a href="#configurazione">Configurazione</a>
+    <a href="#percorso">Percorso del pacchetto</a>
+    <a href="#controllo">Controllo</a>
+    <a href="#errori">Errori tipici</a>
+    <a href="#ripasso">Ripasso</a>
+    <a href="#quiz">Quiz</a>
+  </nav>
+</header>
+
+<section id="problema">
+  <h2>Il problema: le VLAN sono reti separate</h2>
+  <p>Una VLAN divide uno switch in più reti logiche. Ogni VLAN è un <strong>dominio di broadcast distinto</strong> e ha la sua rete IP. Lo switch lavora a livello 2 (indirizzi MAC) e non fa mai passare un frame da una VLAN a un'altra.</p>
+  <p>Quindi un PC della VLAN 10 che vuole raggiungere un PC della VLAN 20 è nella stessa situazione di due PC in due reti diverse: serve qualcuno che lavori a <strong>livello 3</strong> (indirizzi IP), cioè un router. Questo si chiama <strong>inter-VLAN routing</strong>.</p>
+  <div class="key"><strong>Frase da ricordare.</strong> VLAN diverse = domini di broadcast diversi = reti IP diverse. Per farle comunicare serve un dispositivo di livello 3.</div>
+  <p class="src">Il video è il terzo di una serie: nel primo c'era un solo switch con le VLAN, nel secondo due switch collegati in trunk. Questo aggiunge il routing.</p>
+</section>
+
+<section id="soluzioni">
+  <h2>Le tre soluzioni possibili</h2>
+  <div class="cols">
+    <div>
+      <h3>1. Un'interfaccia per VLAN</h3>
+      <p>Detta anche <em>legacy</em>. Il router ha una porta fisica per ogni VLAN, ognuna collegata a una porta dello switch.</p>
+      <ul>
+        <li>3 VLAN = 3 porte del router + 3 porte dello switch + 3 cavi.</li>
+        <li>Semplice da capire, ma laboriosa e <strong>spreca risorse</strong>: ogni nuova VLAN richiede un nuovo link.</li>
+      </ul>
+    </div>
+    <div class="pick">
+      <h3>2. Router-on-a-stick</h3>
+      <p>Un solo cavo (lo <em>stick</em>, il bastoncino) tra router e switch, configurato come <strong>trunk</strong>. Sul router si creano più <strong>sotto-interfacce</strong> logiche, una per VLAN.</p>
+      <ul>
+        <li>Una sola porta del router per tutte le VLAN.</li>
+        <li>Limite: tutto il traffico tra VLAN passa da quel cavo, che diventa collo di bottiglia e punto unico di guasto.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>3. Switch layer 3</h3>
+      <p>Al posto dello switch normale si usa uno <strong>switch multilayer</strong>, che opportunamente configurato fa il routing tra VLAN da solo, senza router esterno.</p>
+      <ul>
+        <li>È la soluzione più veloce, usata nelle reti grandi.</li>
+        <li>Costa di più. Nel video è solo citata.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="rete">
+  <h2>La rete del video</h2>
+  <p>Due switch collegati in trunk, tre VLAN, e un router Cisco 2911 collegato con un <strong>cavo dritto</strong> (straight) a una porta dello switch. Il gateway di ogni VLAN è, per convenzione, l'<strong>ultimo indirizzo utilizzabile</strong> della rete: il <code>.254</code>.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>VLAN</th><th>Nome</th><th>Rete IP</th><th>Gateway dei PC</th><th>Sotto-interfaccia del router</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip c10">10</span></td><td>Vendite</td><td class="num">192.168.10.0/24</td><td class="num">192.168.10.254</td><td class="num">G0/0.10</td></tr>
+        <tr><td><span class="chip c20">20</span></td><td>Amministrazione</td><td class="num">192.168.20.0/24</td><td class="num">192.168.20.254</td><td class="num">G0/0.20</td></tr>
+        <tr><td><span class="chip c99">99</span></td><td>Tecnici / gestione</td><td class="num">192.168.99.0/24</td><td class="num">192.168.99.254</td><td class="num">G0/0.99</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="key"><strong>L'idea centrale.</strong> Il router dovrebbe avere tre indirizzi IP (uno per VLAN) ma ha un solo cavo. La soluzione è dividere l'interfaccia fisica <code>G0/0</code> in tre sotto-interfacce logiche, ognuna con il suo IP e la sua VLAN. L'IP di ogni sotto-interfaccia è il gateway dei PC di quella VLAN.</div>
+</section>
+
+<section id="configurazione">
+  <h2>Configurazione passo per passo</h2>
+
+  <h3>Passo 1 · Accendere l'interfaccia fisica del router</h3>
+  <p>Le porte di un router sono spente di default. L'interfaccia fisica <strong>non riceve nessun indirizzo IP</strong>: gli IP vanno solo sulle sotto-interfacce.</p>
+<pre class="term"><span class="p">Router&gt;</span> enable
+<span class="p">Router#</span> configure terminal
+<span class="p">Router(config)#</span> interface GigabitEthernet0/0
+<span class="p">Router(config-if)#</span> <span class="h">no shutdown</span>
+<span class="p">Router(config-if)#</span> exit</pre>
+
+  <h3>Passo 2 · Creare una sotto-interfaccia per ogni VLAN</h3>
+  <p>Si scrive il nome dell'interfaccia seguito da un punto e un numero. Il prompt cambia da <code>config-if</code> a <code>config-subif</code>.</p>
+<pre class="term"><span class="p">Router(config)#</span> interface GigabitEthernet<span class="h">0/0.10</span>
+<span class="p">Router(config-subif)#</span> <span class="h">encapsulation dot1Q 10</span>
+<span class="p">Router(config-subif)#</span> ip address 192.168.10.254 255.255.255.0
+<span class="p">Router(config-subif)#</span> exit
+
+<span class="p">Router(config)#</span> interface GigabitEthernet<span class="h">0/0.20</span>
+<span class="p">Router(config-subif)#</span> <span class="h">encapsulation dot1Q 20</span>
+<span class="p">Router(config-subif)#</span> ip address 192.168.20.254 255.255.255.0
+<span class="p">Router(config-subif)#</span> exit
+
+<span class="c">! La VLAN 99 nel video non viene configurata. Si farebbe allo stesso modo:</span>
+<span class="p">Router(config)#</span> interface GigabitEthernet0/0.99
+<span class="p">Router(config-subif)#</span> encapsulation dot1Q 99
+<span class="p">Router(config-subif)#</span> ip address 192.168.99.254 255.255.255.0</pre>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Comando</th><th>Cosa fa</th></tr></thead>
+      <tbody>
+        <tr><td><code>interface g0/0.10</code></td><td>Crea la sotto-interfaccia. Il numero dopo il punto è <strong>libero</strong>: si usa 10 solo per ricordarsi che serve la VLAN 10.</td></tr>
+        <tr><td><code>encapsulation dot1Q 10</code></td><td>Dice al router di usare il protocollo trunk <strong>IEEE 802.1Q</strong> e che questa sotto-interfaccia gestisce i frame con <strong>tag VLAN 10</strong>. È questo numero, non quello dopo il punto, a legare la sotto-interfaccia alla VLAN.</td></tr>
+        <tr><td><code>ip address … 255.255.255.0</code></td><td>Assegna l'IP, cioè il gateway della VLAN. Va dato <strong>dopo</strong> <code>encapsulation</code>, altrimenti il router lo rifiuta.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Passo 3 · Mettere in trunk la porta dello switch verso il router</h3>
+  <p>Su quel cavo devono passare i frame di tutte le VLAN, quindi la porta dello switch collegata al router (nel video <code>GigabitEthernet1/2</code>) va messa in <strong>modalità trunk</strong>. Nel video la prof se ne dimentica all'inizio e poi si corregge: <strong>il trunk si imposta sullo switch, non sul router</strong>.</p>
+<pre class="term"><span class="p">Switch(config)#</span> interface GigabitEthernet1/2
+<span class="p">Switch(config-if)#</span> <span class="h">switchport mode trunk</span></pre>
+  <p class="src"><span class="tag video">nel video</span> è fatto dalla scheda grafica Config di Packet Tracer (menu a tendina su “Trunk”, VLAN 1–1001). Il comando qui sopra è l'equivalente da riga di comando.</p>
+
+  <h3>Passo 4 · Gateway sui PC</h3>
+  <p>Ogni PC deve avere come default gateway l'IP della sotto-interfaccia della propria VLAN: i PC di Vendite <code>192.168.10.254</code>, quelli di Amministrazione <code>192.168.20.254</code>. Senza gateway il PC non sa a chi consegnare i pacchetti diretti fuori dalla sua rete.</p>
+</section>
+
+<section id="percorso">
+  <h2>Che strada fa il pacchetto</h2>
+  <p>Ping da un PC di Vendite (<code>192.168.10.3</code>) a un PC di Amministrazione (<code>192.168.20.2</code>) collegato all'altro switch. Premi Avanti per seguire il frame: l'etichetta mostra il tag 802.1Q che porta in quel tratto.</p>
+  <div class="stepper">
+    <div class="diagram">
+      <svg viewBox="0 0 700 370" role="img" aria-label="Topologia: router collegato in trunk allo switch 1, switch 1 in trunk con switch 2, PC nelle VLAN 10, 20 e 99">
+        <rect class="z10" x="520" y="22" width="165" height="56" rx="6" stroke-width="1.5"/>
+        <rect class="z99" x="520" y="102" width="165" height="56" rx="6" stroke-width="1.5"/>
+        <rect class="z20" x="520" y="222" width="165" height="56" rx="6" stroke-width="1.5"/>
+        <rect class="z10" x="520" y="292" width="165" height="56" rx="6" stroke-width="1.5"/>
+
+        <line id="l-r" class="link trunk" x1="125" y1="100" x2="270" y2="100"/>
+        <line id="l-ss" class="link trunk" x1="310" y1="122" x2="310" y2="258"/>
+        <line id="l-a" class="link" x1="350" y1="92" x2="540" y2="50"/>
+        <line id="l-lap" class="link" x1="350" y1="108" x2="540" y2="130"/>
+        <line id="l-b" class="link" x1="350" y1="272" x2="540" y2="250"/>
+        <line id="l-d" class="link" x1="350" y1="288" x2="540" y2="320"/>
+
+        <text class="small" x="197" y="88" text-anchor="middle">trunk 802.1Q</text>
+        <text class="m" x="130" y="118">G0/0</text>
+        <text class="m" x="232" y="118">G1/2</text>
+        <text class="small" x="320" y="194">trunk</text>
+        <text class="small" x="440" y="58" text-anchor="middle">access</text>
+        <text class="small" x="440" y="252" text-anchor="middle">access</text>
+
+        <rect class="node" x="55" y="75" width="70" height="50" rx="25"/>
+        <text class="lbl" x="90" y="105" text-anchor="middle">Router</text>
+        <text class="m" x="20" y="150">G0/0.10  192.168.10.254</text>
+        <text class="m" x="20" y="167">G0/0.20  192.168.20.254</text>
+        <text class="m" x="20" y="184">G0/0.99  192.168.99.254</text>
+
+        <rect class="node" x="270" y="78" width="80" height="44" rx="6"/>
+        <text class="lbl" x="310" y="105" text-anchor="middle">Switch 1</text>
+        <rect class="node" x="270" y="258" width="80" height="44" rx="6"/>
+        <text class="lbl" x="310" y="285" text-anchor="middle">Switch 2</text>
+
+        <text class="lbl" x="602" y="45" text-anchor="middle">PC-A · VLAN 10</text>
+        <text class="m" x="602" y="64" text-anchor="middle">192.168.10.3</text>
+        <text class="lbl" x="602" y="125" text-anchor="middle">Laptop · VLAN 99</text>
+        <text class="m" x="602" y="144" text-anchor="middle">192.168.99.x</text>
+        <text class="lbl" x="602" y="245" text-anchor="middle">PC-B · VLAN 20</text>
+        <text class="m" x="602" y="264" text-anchor="middle">192.168.20.2</text>
+        <text class="lbl" x="602" y="315" text-anchor="middle">PC · VLAN 10</text>
+        <text class="m" x="602" y="334" text-anchor="middle">192.168.10.x</text>
+
+        <g id="pkt" transform="translate(540,50)">
+          <rect id="pktbox" x="-30" y="-11" width="60" height="22" rx="4" class="z10"/>
+          <text id="pkttxt" x="0" y="4" text-anchor="middle">no tag</text>
+        </g>
+      </svg>
+    </div>
+    <div class="stepbar">
+      <button id="prev" type="button">← Indietro</button>
+      <button id="next" type="button" class="primary">Avanti →</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="stepbox" aria-live="polite">
+      <h3 id="st"></h3>
+      <p id="sd"></p>
+    </div>
+  </div>
+  <div class="key"><strong>Perché “on a stick”.</strong> Il pacchetto entra nel router e ne esce <em>dallo stesso cavo</em>: entra con il tag 10 e riparte con il tag 20. Il router ha cambiato VLAN al pacchetto, ed è esattamente questo il routing inter-VLAN.</div>
+</section>
+
+<section id="controllo">
+  <h2>Come si controlla che funzioni</h2>
+  <h3>Tabella di routing</h3>
+  <p>Con <code>show ip route</code> il router mostra le reti che conosce. Le sotto-interfacce configurate compaiono come reti <strong>direttamente connesse</strong>, quindi non serve nessuna rotta statica né protocollo di routing.</p>
+<pre class="term"><span class="p">Router#</span> <span class="h">show ip route</span>
+Gateway of last resort is not set
+
+     192.168.10.0/24 is variably subnetted, 2 subnets, 2 masks
+<span class="h">C</span>       192.168.10.0/24 is directly connected, GigabitEthernet0/0.10
+<span class="h">L</span>       192.168.10.254/32 is directly connected, GigabitEthernet0/0.10
+     192.168.20.0/24 is variably subnetted, 2 subnets, 2 masks
+<span class="h">C</span>       192.168.20.0/24 is directly connected, GigabitEthernet0/0.20
+<span class="h">L</span>       192.168.20.254/32 is directly connected, GigabitEthernet0/0.20</pre>
+  <ul>
+    <li><code>C</code> = <em>connected</em>: la rete collegata a quella sotto-interfaccia.</li>
+    <li><code>L</code> = <em>local</em>: l'indirizzo IP del router stesso su quella rete (per questo ha maschera /32).</li>
+    <li>La rete <code>192.168.99.0</code> <strong>non c'è</strong>: nel video la sotto-interfaccia .99 non è stata configurata, quindi il router non la conosce.</li>
+  </ul>
+  <h3>Ping tra VLAN diverse</h3>
+<pre class="term"><span class="p">PC&gt;</span> ping 192.168.20.2</pre>
+  <p>Nel video il ping da <code>192.168.10.3</code> a <code>192.168.20.2</code> “ci mette un attimo” e poi risponde. Il ritardo iniziale è normale: prima dello scambio servono le richieste ARP (il PC deve scoprire il MAC del gateway, il router quello del destinatario), per questo il primo pacchetto può andare in timeout.</p>
+  <p>In modalità <strong>Simulation</strong> di Packet Tracer, con Capture/Forward, si vede il pacchetto ICMP andare dal PC allo switch, salire al router, tornare allo switch e arrivare a destinazione. La risposta fa la strada al contrario.</p>
+</section>
+
+<section id="errori">
+  <h2>Errori tipici (e domande trabocchetto)</h2>
+  <ul>
+    <li><strong>Dimenticare <code>no shutdown</code></strong> sull'interfaccia fisica: se G0/0 è spenta, sono spente anche tutte le sue sotto-interfacce.</li>
+    <li><strong>Dare un IP all'interfaccia fisica.</strong> Nel router-on-a-stick gli IP stanno solo sulle sotto-interfacce.</li>
+    <li><strong>Lasciare in access la porta dello switch verso il router.</strong> Deve essere trunk, altrimenti passa una sola VLAN. Ed è lo switch a essere configurato in trunk, non il router: sul router il “trunk” si ottiene con <code>encapsulation dot1Q</code>.</li>
+    <li><strong>Sbagliare il numero in <code>encapsulation dot1Q</code>.</strong> Conta questo numero, non quello dopo il punto nel nome della sotto-interfaccia.</li>
+    <li><strong>Gateway sbagliato o mancante sui PC.</strong> Deve coincidere con l'IP della sotto-interfaccia della loro VLAN.</li>
+    <li><strong>Sotto-interfaccia non creata</strong> per una VLAN: quella VLAN resta isolata (nel video succede alla 99).</li>
+  </ul>
+</section>
+
+<section id="ripasso">
+  <h2>Ripasso: parole chiave e domande aperte</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Termine</th><th>Significato</th></tr></thead>
+      <tbody>
+        <tr><td><strong>VLAN</strong></td><td>Rete locale virtuale: divisione logica di uno switch in più domini di broadcast.</td></tr>
+        <tr><td><strong>Porta access</strong></td><td>Porta dello switch che appartiene a una sola VLAN. I frame viaggiano senza tag. Ci si collegano i PC.</td></tr>
+        <tr><td><strong>Porta trunk</strong></td><td>Porta che trasporta più VLAN sullo stesso cavo, distinguendole con un tag.</td></tr>
+        <tr><td><strong>IEEE 802.1Q (dot1Q)</strong></td><td>Lo standard del trunk: aggiunge al frame Ethernet un tag di 4 byte che contiene il numero della VLAN (12 bit, quindi VLAN da 1 a 4094). <span class="tag">approfondimento</span></td></tr>
+        <tr><td><strong>Sotto-interfaccia</strong></td><td>Interfaccia logica ricavata da una fisica (es. <code>G0/0.10</code>), con un proprio IP e una propria VLAN.</td></tr>
+        <tr><td><strong>Default gateway</strong></td><td>L'indirizzo a cui un host manda i pacchetti destinati a reti diverse dalla sua.</td></tr>
+        <tr><td><strong>Switch layer 3</strong></td><td>Switch multilayer che sa anche instradare a livello IP, quindi fa inter-VLAN routing senza router.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Prova a rispondere a voce, poi apri la risposta.</p>
+  <details><summary>Perché due PC in VLAN diverse sullo stesso switch non comunicano?</summary><p>Perché ogni VLAN è un dominio di broadcast separato e una rete IP diversa. Lo switch, che lavora a livello 2, non inoltra frame da una VLAN all'altra. Serve un dispositivo di livello 3 che faccia routing.</p></details>
+  <details><summary>Cos'è il router-on-a-stick e quali vantaggi ha rispetto a un'interfaccia per VLAN?</summary><p>È una tecnica di inter-VLAN routing in cui il router è collegato allo switch con un solo link trunk e usa una sotto-interfaccia per ogni VLAN. Rispetto al metodo con un'interfaccia fisica per VLAN usa una sola porta del router, una sola porta dello switch e un solo cavo, e aggiungere una VLAN richiede solo una nuova sotto-interfaccia. Lo svantaggio è che tutto il traffico tra VLAN passa da un unico link.</p></details>
+  <details><summary>A cosa serve il comando <code>encapsulation dot1Q 20</code>?</summary><p>Associa la sotto-interfaccia alla VLAN 20 usando il protocollo 802.1Q: il router accetta su quella sotto-interfaccia i frame che arrivano con tag 20 e mette il tag 20 su quelli che fa uscire da lì.</p></details>
+  <details><summary>Descrivi il percorso di un ping dalla VLAN 10 alla VLAN 20.</summary><p>Il PC vede che la destinazione è in un'altra rete e manda il pacchetto al suo gateway. Lo switch lo inoltra sul trunk con tag 10. Il router lo riceve sulla sotto-interfaccia .10, consulta la tabella di routing, trova la rete 192.168.20.0 connessa alla sotto-interfaccia .20 e lo rimanda sullo stesso cavo con tag 20. Lo switch lo consegna, senza tag, alla porta access del PC di destinazione. La risposta segue il percorso inverso.</p></details>
+  <details><summary>Perché non serve configurare rotte statiche sul router?</summary><p>Perché tutte le reti delle VLAN sono direttamente connesse alle sotto-interfacce del router: compaiono da sole nella tabella di routing con la lettera C.</p></details>
+</section>
+
+<section id="quiz">
+  <h2>Quiz di autovalutazione</h2>
+  <p>Otto domande a risposta multipla. Punteggio: <span class="score" id="score">0 / 8</span></p>
+  <div id="quizbox" style="display:flex;flex-direction:column;gap:1rem"></div>
+  <div><button id="reset" type="button">Ricomincia il quiz</button></div>
+</section>
+
+<footer>
+  Scheda basata sul video “VLAN routing” di Sophia Danesino (11:55, serie Cisco Packet Tracer): <a href="https://www.youtube.com/watch?v=jkva3hbJXZE">youtube.com/watch?v=jkva3hbJXZE</a>. Le parti segnate come approfondimento e la configurazione della sotto-interfaccia .99 non compaiono nel video.
+</footer>
+
+</div>
+
+<script>
+// ---------- Percorso del pacchetto ----------
+const P = {a:[540,50], s1:[310,100], r:[125,100], s2:[310,280], b:[540,250]};
+const steps = [
+  {at:'a', links:[], tag:null, v:10, t:'1 · PC-A decide a chi spedire',
+   d:'PC-A confronta l\'IP di destinazione (192.168.20.2) con la propria rete (192.168.10.0/24): è una rete diversa. Quindi non cerca il destinatario direttamente ma spedisce il frame al suo default gateway, 192.168.10.254.'},
+  {at:'s1', links:['l-a'], tag:null, v:10, t:'2 · Dal PC allo Switch 1 (porta access)',
+   d:'Il frame viaggia senza tag: la porta è access e lo switch sa che tutto ciò che arriva da lì appartiene alla VLAN 10.'},
+  {at:'r', links:['l-r'], tag:10, v:10, t:'3 · Dallo Switch 1 al router (trunk, tag 10)',
+   d:'Sul trunk lo switch aggiunge il tag 802.1Q con il numero 10. Il router lo riceve sulla sotto-interfaccia G0/0.10, quella con "encapsulation dot1Q 10".'},
+  {at:'s1', links:['l-r'], tag:20, v:20, t:'4 · Il router instrada e rimanda indietro (tag 20)',
+   d:'Il router consulta la tabella di routing: 192.168.20.0/24 è connessa a G0/0.20. Fa uscire il pacchetto da quella sotto-interfaccia, cioè dallo stesso cavo fisico, ma ora con tag 20.'},
+  {at:'s2', links:['l-ss'], tag:20, v:20, t:'5 · Dallo Switch 1 allo Switch 2 (trunk, tag 20)',
+   d:'Il destinatario è sull\'altro switch. Il frame attraversa il trunk tra gli switch mantenendo il tag 20.'},
+  {at:'b', links:['l-b'], tag:null, v:20, t:'6 · Consegna a PC-B (porta access)',
+   d:'Lo Switch 2 toglie il tag e consegna il frame sulla porta access della VLAN 20. PC-B riceve il ping.'},
+  {at:'a', links:['l-b','l-ss','l-r','l-a'], tag:null, v:10, t:'7 · La risposta torna indietro',
+   d:'PC-B risponde facendo lo stesso ragionamento: manda al suo gateway 192.168.20.254. Il frame sale al router con tag 20, riparte con tag 10 e arriva a PC-A. Ping riuscito.'}
+];
+let cur = 0;
+const $ = id => document.getElementById(id);
+function show(){
+  const s = steps[cur];
+  $('pkt').setAttribute('transform','translate('+P[s.at][0]+','+P[s.at][1]+')');
+  $('pktbox').setAttribute('class', s.v===10 ? 'z10' : 'z20');
+  $('pkttxt').textContent = s.tag ? 'tag '+s.tag : 'no tag';
+  document.querySelectorAll('svg .link').forEach(l => l.classList.toggle('on', s.links.includes(l.id)));
+  $('st').textContent = s.t; $('sd').textContent = s.d;
+  $('count').textContent = 'passo '+(cur+1)+' di '+steps.length;
+  $('prev').disabled = cur===0; $('next').disabled = cur===steps.length-1;
+}
+$('prev').addEventListener('click',()=>{ if(cur>0){cur--;show();} });
+$('next').addEventListener('click',()=>{ if(cur<steps.length-1){cur++;show();} });
+show();
+
+// ---------- Quiz ----------
+const Q = [
+  {q:'Perché serve un router per far comunicare due VLAN?',
+   o:['Perché gli switch non hanno abbastanza porte','Perché ogni VLAN è un dominio di broadcast e una rete IP distinta, e serve il livello 3','Perché i cavi dritti non trasportano le VLAN','Perché le VLAN usano indirizzi MAC diversi'], a:1,
+   w:'Lo switch (livello 2) tiene separate le VLAN. Passare da una rete IP a un\'altra è compito del livello 3.'},
+  {q:'Nel router-on-a-stick, quanti collegamenti fisici ci sono tra router e switch con 3 VLAN?',
+   o:['3, uno per VLAN','2','1, configurato come trunk','Nessuno, è tutto wireless'], a:2,
+   w:'È proprio il vantaggio della tecnica: un solo link (lo "stick") trasporta tutte le VLAN.'},
+  {q:'Quale comando lega la sotto-interfaccia alla VLAN 20?',
+   o:['switchport access vlan 20','interface g0/0.20','encapsulation dot1Q 20','vlan 20'], a:2,
+   w:'Il numero dopo il punto nel nome è solo una convenzione. A decidere la VLAN è il numero in encapsulation dot1Q.'},
+  {q:'Dove va impostata la modalità trunk?',
+   o:['Sull\'interfaccia fisica del router','Sulla porta dello switch collegata al router','Sulle porte dello switch collegate ai PC','Sulla scheda di rete dei PC'], a:1,
+   w:'È la correzione che la prof fa nel video: switchport mode trunk si dà sullo switch. Le porte verso i PC restano access.'},
+  {q:'Quale indirizzo va messo come default gateway su un PC della VLAN 10 nella rete del video?',
+   o:['192.168.10.1','192.168.20.254','192.168.10.254','192.168.10.255'], a:2,
+   w:'Il gateway è l\'IP della sotto-interfaccia G0/0.10, per convenzione l\'ultimo indirizzo utilizzabile. Il .255 è il broadcast.'},
+  {q:'Su quale interfaccia si dà il comando no shutdown?',
+   o:['Sull\'interfaccia fisica G0/0','Solo sulla sotto-interfaccia .10','Sulla porta dello switch','Non serve mai'], a:0,
+   w:'Le porte del router sono spente di default. Accendendo quella fisica si attivano anche le sotto-interfacce.'},
+  {q:'In show ip route, con che lettera compaiono le reti delle VLAN configurate?',
+   o:['S (static)','O (OSPF)','C (connected)','R (RIP)'], a:2,
+   w:'Sono reti direttamente connesse alle sotto-interfacce. La L indica invece l\'IP del router stesso (/32).'},
+  {q:'Un pacchetto dalla VLAN 10 alla VLAN 20 entra nel router con tag 10. Come esce?',
+   o:['Da un\'altra porta fisica, senza tag','Dallo stesso cavo, con tag 20','Dallo stesso cavo, con tag 10','Non esce: viene scartato'], a:1,
+   w:'Entra dalla sotto-interfaccia .10 ed esce dalla .20: stesso cavo fisico, tag diverso.'}
+];
+let answered = {}, score = 0;
+function renderQuiz(){
+  const box = $('quizbox'); box.innerHTML = '';
+  Q.forEach((it,i)=>{
+    const d = document.createElement('div'); d.className = 'q';
+    const p = document.createElement('p'); p.className = 'qt'; p.textContent = (i+1)+'. '+it.q; d.appendChild(p);
+    const os = document.createElement('div'); os.className = 'opts';
+    const why = document.createElement('p'); why.className = 'why'; why.hidden = true; why.textContent = it.w;
+    it.o.forEach((txt,j)=>{
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = txt; b.id = 'q'+i+'o'+j;
+      b.addEventListener('click',()=>{
+        if(answered[i]) return; answered[i] = true;
+        if(j===it.a){ b.classList.add('right'); b.textContent = '✓ '+txt; score++; }
+        else { b.classList.add('wrong'); b.textContent = '✗ '+txt; const r = os.children[it.a]; r.classList.add('right'); r.textContent = '✓ '+it.o[it.a]; }
+        [...os.children].forEach(x=>x.disabled = true);
+        why.hidden = false; $('score').textContent = score+' / '+Q.length;
+      });
+      os.appendChild(b);
+    });
+    d.appendChild(os); d.appendChild(why); box.appendChild(d);
+  });
+  $('score').textContent = score+' / '+Q.length;
+}
+$('reset').addEventListener('click',()=>{ answered = {}; score = 0; renderQuiz(); $('quiz').scrollIntoView(); });
+renderQuiz();
+</script>
+
+</html>
